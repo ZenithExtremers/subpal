@@ -1,0 +1,22 @@
+{
+  "name": "SubPal - サブスク管理",
+  "short_name": "SubPal",
+  "description": "サブスクの支払い・更新日・無料期間をまとめて管理。解約忘れをペンギンのパルが知らせます。",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F7FA",
+  "theme_color": "#2A9D8F",
+  "lang": "ja",
+  "categories": ["finance", "productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "サブスクを追加", "url": "./?add=1", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

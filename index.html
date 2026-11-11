@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SubPal - サブスク管理</title>
+<meta name="description" content="サブスクの支払い・更新日・無料期間をまとめて管理。解約忘れをペンギンのパルが知らせます。">
+<meta name="theme-color" content="#2A9D8F" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1420" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SubPal">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1 id="title">SubPal</h1>
+  </header>
+
+  <main id="main">
+    <section id="view-home" class="view active"></section>
+    <section id="view-list" class="view"></section>
+    <section id="view-stats" class="view"></section>
+    <section id="view-settings" class="view"></section>
+  </main>
+
+  <button id="fab" class="fab" aria-label="サブスクを追加">
+    <svg viewBox="0 0 24 24" width="28" height="28"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+  </button>
+
+  <nav class="tabbar">
+    <button class="tab active" data-view="home"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg><span>ホーム</span></button>
+    <button class="tab" data-view="list"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg><span>一覧</span></button>
+    <button class="tab" data-view="stats"><svg viewBox="0 0 24 24"><path d="M5 20V11M12 20V4M19 20v-6"/></svg><span>集計</span></button>
+    <button class="tab" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>設定</span></button>
+  </nav>
+
+  <div id="backdrop" class="backdrop"></div>
+  <div id="sheet" class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-handle"></div>
+    <div id="sheet-body"></div>
+  </div>
+  <div id="toast" class="toast"></div>
+  <input type="file" id="import-file" accept="application/json,.json" hidden>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
