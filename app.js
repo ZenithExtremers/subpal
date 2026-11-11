@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -218,9 +218,10 @@ function itemHTML(s, opt = {}) {
   const desc = s.status === 'active' && date
     ? `${md(date)}（${wd(date)}）${opt.type === 'trial' ? '無料期間終了' : '支払い'}・${cycleText(s)}`
     : `${cycleText(s)}・${CAT[s.cat]?.name || 'その他'}`;
+  const bell = s.status === 'active' && s.notifyDays < 0 ? '・🔕' : '';
   return `<button class="item ${s.status !== 'active' ? 'dim' : ''}" data-edit="${s.id}">
     <div class="badge" style="background:${esc(s.color)}">${esc(initial(s.name))}</div>
-    <div class="meta"><div class="name">${esc(s.name)}</div><div class="desc">${desc}</div></div>
+    <div class="meta"><div class="name">${esc(s.name)}</div><div class="desc">${desc}${bell}</div></div>
     <div class="right"><div class="price">${yen(s.price)}</div>${chip}</div></button>`;
 }
 function renderHome() {
@@ -324,7 +325,7 @@ function renderSettings() {
     <div class="card">
       <button class="set-row" data-act="toggle-notify"><div>支払い・無料期間のお知らせ<small>${perm === 'unsupported' ? 'このブラウザは通知に対応していません' : perm === 'denied' ? 'ブラウザの設定で通知がブロックされています' : 'アプリを開いたときや、バックグラウンドで知らせます'}</small></div><div class="switch ${notifyOn ? 'on' : ''}"></div></button>
       <div class="set-row"><div>新規登録時の通知タイミング</div>
-        <select class="select" id="default-notify">${[0, 1, 2, 3, 5, 7, 14].map(d => `<option value="${d}" ${st.defaultNotify === d ? 'selected' : ''}>${d ? d + '日前' : '当日'}</option>`).join('')}</select></div>
+        <select class="select" id="default-notify">${notifyOptions(st.defaultNotify)}</select></div>
       <button class="set-row" data-act="ics"><div>カレンダーに書き出す（.ics）<small>Googleカレンダー等に取り込むと、確実にリマインドが届きます</small></div><span>›</span></button>
     </div>
     <div class="section-title">表示</div>
@@ -407,7 +408,7 @@ function openForm(sub) {
     <p class="hint">無料トライアル中なら入れておくと、終わる前にパルが知らせます。</p>
     <div class="grid2">
       <div class="field"><label>カテゴリ</label><select id="f-cat">${CATEGORIES.map(([k, n]) => `<option value="${k}" ${draft.cat === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
-      <div class="field"><label>通知</label><select id="f-notify">${[0, 1, 2, 3, 5, 7, 14].map(d => `<option value="${d}" ${Number(draft.notifyDays) === d ? 'selected' : ''}>${d ? d + '日前' : '当日'}</option>`).join('')}</select></div>
+      <div class="field"><label>通知</label><select id="f-notify">${notifyOptions(Number(draft.notifyDays))}</select></div>
     </div>
     <div class="field"><label>色</label><div class="colors" id="f-colors">${COLORS.map(c => `<button type="button" data-color="${c}" class="${draft.color === c ? 'on' : ''}" style="background:${c}" aria-label="色"></button>`).join('')}</div></div>
     <div class="field"><label>解約・管理ページのURL</label><input id="f-url" type="url" inputmode="url" value="${esc(draft.url)}" placeholder="https://"></div>
@@ -421,6 +422,9 @@ function openForm(sub) {
     <button class="btn ghost" data-act="close">キャンセル</button>`);
   updatePreview();
   if (isNew) setTimeout(() => $('#f-name')?.focus(), 350);
+}
+function notifyOptions(sel) {
+  return [-1, 0, 1, 2, 3, 5, 7, 14].map(d => `<option value="${d}" ${sel === d ? 'selected' : ''}>${d < 0 ? '通知しない' : d ? d + '日前' : '当日'}</option>`).join('');
 }
 function intervalOptions(cycle, sel) {
   return Array.from({ length: 12 }, (_, i) => i + 1)
@@ -510,6 +514,7 @@ function reminderList() {
   const out = [];
   for (const s of active()) {
     const nd = s.notifyDays ?? 3;
+    if (nd < 0) continue;
     if (s.nextDate) { const n = daysUntil(s.nextDate); if (n >= 0 && n <= nd) out.push({ key: `${s.id}:bill:${s.nextDate}`, title: n === 0 ? `今日は${s.name}の支払い日` : `${s.name}の支払いまであと${n}日`, body: `${md(s.nextDate)} に ${yen(s.price)} の支払い予定です。` }); }
     if (s.trialEnd) { const n = daysUntil(s.trialEnd); if (n >= 0 && n <= Math.max(nd, 1)) out.push({ key: `${s.id}:trial:${s.trialEnd}`, title: n === 0 ? `${s.name}の無料期間は今日まで` : `${s.name}の無料期間はあと${n}日`, body: '続けないなら、終わる前に解約しよう。' }); }
   }
@@ -570,10 +575,10 @@ function exportICS() {
     lines.push('BEGIN:VEVENT', `UID:${s.id}@subpal`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(s.nextDate)}`, `DTEND;VALUE=DATE:${ymd(next(s.nextDate))}`,
       `RRULE:FREQ=${freq};INTERVAL=${s.interval || 1}`, `SUMMARY:${icsEsc(`${s.name} 支払い ${yen(s.price)}`)}`,
       `DESCRIPTION:${icsEsc((s.url ? '管理ページ: ' + s.url + '\n' : '') + (s.memo || ''))}`,
-      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(s.name + 'の支払い')}`, nd === 0 ? 'TRIGGER:PT9H' : `TRIGGER:-PT${nd * 24 - 9}H`, 'END:VALARM', 'END:VEVENT');
+      ...(nd < 0 ? [] : ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(s.name + 'の支払い')}`, nd === 0 ? 'TRIGGER:PT9H' : `TRIGGER:-PT${nd * 24 - 9}H`, 'END:VALARM']), 'END:VEVENT');
     if (s.trialEnd && daysUntil(s.trialEnd) >= 0) {
       lines.push('BEGIN:VEVENT', `UID:${s.id}-trial@subpal`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${ymd(s.trialEnd)}`, `DTEND;VALUE=DATE:${ymd(next(s.trialEnd))}`,
-        `SUMMARY:${icsEsc(s.name + ' 無料期間終了')}`, 'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(s.name + 'の無料期間がもうすぐ終了')}`, 'TRIGGER:-PT39H', 'END:VALARM', 'END:VEVENT');
+        `SUMMARY:${icsEsc(s.name + ' 無料期間終了')}`, ...(nd < 0 ? [] : ['BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(s.name + 'の無料期間がもうすぐ終了')}`, 'TRIGGER:-PT39H', 'END:VALARM']), 'END:VEVENT');
     }
   }
   lines.push('END:VCALENDAR');

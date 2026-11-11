@@ -1,5 +1,5 @@
 /* SubPal Service Worker */
-const CACHE = 'subpal-shell-v1';
+const CACHE = 'subpal-shell-v2';
 const DATA_CACHE = 'subpal-data';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'icons/apple-touch-icon.png'];
@@ -50,6 +50,7 @@ async function check() {
     let guard = 0;
     while (s.nextDate && parse(s.nextDate) < today() && guard++ < 2000) s.nextDate = addCycle(s.nextDate, s);
     const nd = s.notifyDays ?? 3;
+    if (nd < 0) continue;
     const list = [];
     if (s.nextDate) { const n = daysUntil(s.nextDate); if (n >= 0 && n <= nd) list.push([`${s.id}:bill:${s.nextDate}`, n === 0 ? `今日は${s.name}の支払い日` : `${s.name}の支払いまであと${n}日`, `${md(s.nextDate)} に ${yen(s.price)} の支払い予定です。`]); }
     if (s.trialEnd) { const n = daysUntil(s.trialEnd); if (n >= 0 && n <= Math.max(nd, 1)) list.push([`${s.id}:trial:${s.trialEnd}`, n === 0 ? `${s.name}の無料期間は今日まで` : `${s.name}の無料期間はあと${n}日`, '続けないなら、終わる前に解約しよう。']); }
