@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -113,10 +113,10 @@ function dayChip(n, trial) {
 /* ---------- 状態と保存 ---------- */
 let state = load();
 function load() {
-  const base = { subs: [], settings: { theme: 'system', notify: false, defaultNotify: 3 }, notified: {}, pay: { records: [], remind: true } };
+  const base = { subs: [], settings: { theme: 'system', notify: false, defaultNotify: 3 }, notified: {}, pay: { records: [], payments: [], remind: true } };
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
-    if (d && Array.isArray(d.subs)) return { ...base, ...d, settings: { ...base.settings, ...d.settings }, pay: { ...base.pay, ...d.pay } };
+    if (d && Array.isArray(d.subs)) return { ...base, ...d, settings: { ...base.settings, ...d.settings }, pay: { ...base.pay, ...d.pay, payments: d.pay?.payments || [] } };
   } catch {}
   return base;
 }
@@ -353,7 +353,16 @@ function payIntervals() {
   }
   return { intervals: out, last: prev };
 }
+function notifMonthly() {
+  const m = {};
+  for (const p of state.pay.payments) m[ym(p.date)] = (m[ym(p.date)] || 0) + p.amount;
+  return m;
+}
 function payMonthly() {
+  const bal = balanceMonthly(), nt = notifMonthly();
+  return { ...bal, ...nt };
+}
+function balanceMonthly() {
   const map = {};
   for (const iv of payIntervals().intervals) {
     const days = Math.round((parse(iv.to) - parse(iv.from)) / 86400000);
@@ -366,6 +375,8 @@ function payMonthly() {
 function monthKeyOffset(off) { const t = today(); return ym(toStr(new Date(t.getFullYear(), t.getMonth() + off, 1))); }
 function renderPay() {
   const recs = state.pay.records;
+  const auto = state.pay.payments.length > 0;
+  const nt = notifMonthly();
   const map = payMonthly();
   const { intervals, last } = payIntervals();
   const cur = monthKeyOffset(0), prev = monthKeyOffset(-1);
@@ -373,18 +384,19 @@ function renderPay() {
   const withData = Object.keys(map).filter(k => k < cur);
   const avg = withData.length ? withData.slice(-6).reduce((a, k) => a + map[k], 0) / Math.min(6, withData.length) : null;
   let mood = 'happy', msg;
-  if (!recs.length) msg = 'PayPayの残高を記録すると、毎月いくら使ったかを計算するよ。<br>取引の中身は見ないから安心してね。';
-  else if (!intervals.length) msg = '最初の残高を記録したよ！次に記録したときから、使った金額がわかるよ。';
+  if (!recs.length && auto) msg = 'PayPayの支払い通知から、使った金額を自動で集計しているよ。';
+  else if (!recs.length) msg = 'PayPayの残高を記録すると、毎月いくら使ったかを計算するよ。<br>取引の中身は見ないから安心してね。';
+  else if (!intervals.length && !auto) msg = '最初の残高を記録したよ！次に記録したときから、使った金額がわかるよ。';
   else if (map[prev] !== undefined) {
     const v = map[prev];
     msg = `先月は<b>${yen(v)}</b>使ったよ。` + (avg && withData.length > 1 ? (v > avg * 1.2 ? 'いつもより多めだね。' : v < avg * 0.8 ? 'いつもより節約できたね！' : '') : '');
     if (v > (avg || Infinity) * 1.2) mood = 'alert';
   } else msg = `今月はここまで<b>${yen(map[cur] || 0)}</b>使ったよ。`;
   const monthStartRec = recs.some(r => r.type === 'balance' && r.date >= cur + '-01');
-  if (recs.length && !monthStartRec) { msg = '月が変わったよ。今の残高を記録すると、先月の使用額が確定するよ。'; mood = 'alert'; }
+  if (recs.length && !monthStartRec && !auto) { msg = '月が変わったよ。今の残高を記録すると、先月の使用額が確定するよ。'; mood = 'alert'; }
 
   let html = `<div class="pal">${palSVG(mood)}<div class="bubble">${msg}</div></div>
-    <div class="card hero"><div class="label">今月のPayPay使用額${last ? `（${md(last.date)}の記録まで）` : ''}</div><div class="big">${yen(map[cur] || 0)}</div>
+    <div class="card hero"><div class="label">今月のPayPay使用額${nt[cur] !== undefined ? '（通知から自動集計）' : last ? `（${md(last.date)}の記録まで）` : ''}</div><div class="big">${yen(map[cur] || 0)}</div>
     <div class="row"><div>先月<b>${map[prev] !== undefined ? yen(map[prev]) : '—'}</b></div><div>月平均<b>${avg !== null ? yen(avg) : '—'}</b></div><div>今の残高<b>${last ? yen(last.amount) : '—'}</b></div></div></div>
     <div class="pay-actions">
       <button class="pay-btn" data-act="pay-shot"><span>📷</span>スクショから記録</button>
@@ -396,13 +408,16 @@ function renderPay() {
     html += `<div class="section-title">月ごとの使用額</div><div class="card"><div class="bars">${months.map(k => `<div class="b ${k === cur ? 'cur' : ''}">
       <div class="m" style="font-weight:700;color:var(--text)">${map[k] ? (map[k] >= 10000 ? (map[k] / 10000).toFixed(1) + '万' : Math.round(map[k] / 100) / 10 + 'k') : ''}</div>
       <div class="bar" style="height:${Math.max(0, map[k] || 0) / max * 100}%"></div><div class="m">${ymLabel(k)}</div></div>`).join('')}</div>
-      <p class="hint" style="margin:10px 2px 0">記録と記録のあいだの使用額を日数で割って、月ごとに振り分けています。毎月1日ごろに残高を記録すると正確になります。</p></div>`;
+      <p class="hint" style="margin:10px 2px 0">支払い通知を取り込んだ月はその合計を、それ以外の月は残高の増減（記録のあいだの額を日数で振り分け）を表示しています。</p></div>`;
   }
   const usedById = Object.fromEntries(intervals.map(iv => [iv.endId, iv.used]));
-  const sorted = [...recs].sort((a, b) => b.date.localeCompare(a.date) || b.t - a.t);
+  const sorted = [...recs, ...state.pay.payments.map(p => ({ ...p, type: 'notif' }))].sort((a, b) => b.date.localeCompare(a.date) || b.t - a.t).slice(0, 60);
   html += `<div class="section-title">記録</div>`;
   html += sorted.length ? `<div class="card">${sorted.map(r => {
     const u = usedById[r.id];
+    if (r.type === 'notif') return `<button class="item" data-payment="${r.id}"><div class="badge" style="background:#24324A">支</div>
+      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">支払い（通知から自動）</div></div>
+      <div class="right"><div class="price">${yen(r.amount)}</div></div></button>`;
     const sub = r.type === 'charge' ? 'チャージ' : u === undefined ? '残高（最初の記録）' : u >= 0 ? `残高・前回から ${yen(u)} 使用` : `残高・前回から ${yen(-u)} 増加（チャージの入れ忘れ？）`;
     return `<button class="item" data-pay="${r.id}"><div class="badge" style="background:${r.type === 'charge' ? '#2BA36B' : '#FF0033'}">${r.type === 'charge' ? '＋' : '¥'}</div>
       <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${sub}</div></div>
@@ -439,6 +454,28 @@ function savePay() {
   save(); vibrate(15); closeSheet(); render();
   const iv = payIntervals().intervals.find(x => x.endId === payDraft.id);
   toast(payDraft.type === 'charge' ? 'チャージを記録したよ' : iv && iv.used >= 0 ? `前回から${yen(iv.used)}使ったよ` : '残高を記録したよ');
+}
+
+/* MacroDroid から送られた支払い額の取り込み（?pp=YYYYMMDDhhmmss-金額,...） */
+function importPayments(str) {
+  const seen = new Set(state.pay.payments.map(p => p.key));
+  let n = 0, sum = 0;
+  for (const raw of str.split(str.includes(';') ? /[;\s]+/ : /[,\s]+/)) {
+    const tok = raw.trim();
+    if (!tok) continue;
+    let m, date, amount;
+    if ((m = tok.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:\.[\d.:]*)?_([\d,]+)$/))) { date = `${m[1]}-${pad(m[2])}-${pad(m[3])}`; amount = Number(m[4].replace(/,/g, '')); }
+    else if ((m = tok.match(/^(\d{4})(\d{2})(\d{2})(\d{0,6})-(\d+)$/))) { date = `${m[1]}-${m[2]}-${m[3]}`; amount = Number(m[5]); }
+    else if ((m = tok.match(/^([\d,]+)$/))) { date = toStr(today()); amount = Number(m[1].replace(/,/g, '')); }
+    else continue;
+    if (!amount || amount > 1000000 || seen.has(tok)) continue;
+    seen.add(tok);
+    state.pay.payments.push({ id: uid(), key: tok, date, amount, t: Date.now() + n });
+    n++; sum += amount;
+  }
+  save();
+  go('pay');
+  toast(n ? `PayPayの支払い${n}件（${yen(sum)}）を取り込んだよ` : '新しい支払いはなかったよ');
 }
 
 /* スクショ読み取り（端末内で処理・画像は保存しない） */
@@ -661,7 +698,7 @@ function reminderList() {
     if (s.nextDate) { const n = daysUntil(s.nextDate); if (n >= 0 && n <= nd) out.push({ key: `${s.id}:bill:${s.nextDate}`, title: n === 0 ? `今日は${s.name}の支払い日` : `${s.name}の支払いまであと${n}日`, body: `${md(s.nextDate)} に ${yen(s.price)} の支払い予定です。` }); }
     if (s.trialEnd) { const n = daysUntil(s.trialEnd); if (n >= 0 && n <= Math.max(nd, 1)) out.push({ key: `${s.id}:trial:${s.trialEnd}`, title: n === 0 ? `${s.name}の無料期間は今日まで` : `${s.name}の無料期間はあと${n}日`, body: '続けないなら、終わる前に解約しよう。' }); }
   }
-  if (state.pay.remind && state.pay.records.length) {
+  if (state.pay.remind && state.pay.records.length && !state.pay.payments.length) {
     const k = monthKeyOffset(0);
     if (!state.pay.records.some(r => r.type === 'balance' && r.date >= k + '-01'))
       out.push({ key: `pay:${k}`, title: '月が変わったよ', body: 'PayPayの残高を記録すると、先月いくら使ったかがわかるよ。' });
@@ -753,6 +790,13 @@ document.addEventListener('click', async e => {
   if (!t) return;
   if (t.classList.contains('tab')) return go(t.dataset.view);
   if (t.id === 'fab') return openPicker();
+  if (t.dataset.payment) {
+    const p = state.pay.payments.find(x => x.id === t.dataset.payment); if (!p) return;
+    payDraft = p;
+    return openSheet(`<h2>支払い（通知から）</h2><div class="preview"><div class="badge" style="background:#24324A">支</div><div><div class="name">${yen(p.amount)}</div><div class="desc">${md(p.date)}（${wd(p.date)}）</div></div></div>
+      <p class="hint">間違って取り込まれた場合（キャンペーンの通知など）は削除してください。</p>
+      <button class="btn danger" data-act="payment-delete">削除</button><button class="btn ghost" data-act="close">閉じる</button>`);
+  }
   if (t.dataset.pay) { const r = state.pay.records.find(x => x.id === t.dataset.pay); if (r) openPayForm(r); return; }
   if (t.dataset.ptype) { payDraft.type = t.dataset.ptype; document.querySelectorAll('#p-type button').forEach(b => b.classList.toggle('on', b === t)); return; }
   if (t.dataset.cand) { $('#p-amount').value = t.dataset.cand; document.querySelectorAll('.cand').forEach(b => b.classList.toggle('on', b === t)); return; }
@@ -787,12 +831,13 @@ document.addEventListener('click', async e => {
     case 'pay-charge': return openPayForm(null, { type: 'charge' });
     case 'pay-save': return savePay();
     case 'pay-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.records = state.pay.records.filter(r => r.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
+    case 'payment-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
     case 'pay-remind': state.pay.remind = !state.pay.remind; save(); return renderPay();
     case 'toggle-notify': return toggleNotify();
     case 'ics': return exportICS();
     case 'export': return exportJSON();
     case 'import': return $('#import-file').click();
-    case 'reset': return armed(t, '<div>もう一度タップで全部消します</div>', () => { state.subs = []; state.notified = {}; state.pay.records = []; save(); render(); toast('すべて削除したよ'); });
+    case 'reset': return armed(t, '<div>もう一度タップで全部消します</div>', () => { state.subs = []; state.notified = {}; state.pay.records = []; state.pay.payments = []; save(); render(); toast('すべて削除したよ'); });
     case 'install': if (deferredInstall) { deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; render(); } return;
   }
 });
@@ -818,6 +863,7 @@ mirror();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(() => { checkReminders(); if (state.settings.notify) registerPeriodic(); }).catch(() => {});
 }
+{ const pp = new URLSearchParams(location.search).get('pp'); if (pp !== null) { history.replaceState(null, '', location.pathname); setTimeout(() => importPayments(pp), 100); } }
 if (new URLSearchParams(location.search).get('shared')) { history.replaceState(null, '', location.pathname); takeSharedImage(); }
 if (new URLSearchParams(location.search).get('add')) { history.replaceState(null, '', location.pathname); setTimeout(openPicker, 300); }
 // 日付が変わったら更新

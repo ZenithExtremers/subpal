@@ -1,5 +1,5 @@
 /* SubPal Service Worker */
-const CACHE = 'subpal-shell-v3';
+const CACHE = 'subpal-shell-v4';
 const DATA_CACHE = 'subpal-data';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'icons/apple-touch-icon.png'];
@@ -73,7 +73,7 @@ async function check() {
     }
   }
   const pay = state.pay || {};
-  if (pay.remind && (pay.records || []).length) {
+  if (pay.remind && (pay.records || []).length && !(pay.payments || []).length) {
     const t = today(), k = `${t.getFullYear()}-${pad(t.getMonth() + 1)}`;
     if (!pay.records.some(r => r.type === 'balance' && r.date >= k + '-01') && !state.notified[`pay:${k}`]) {
       await self.registration.showNotification('月が変わったよ', { body: 'PayPayの残高を記録すると、先月いくら使ったかがわかるよ。', icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag: `pay:${k}`, data: { url: './' } });
