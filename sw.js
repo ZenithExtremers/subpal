@@ -1,5 +1,5 @@
 /* SubPal Service Worker */
-const CACHE = 'subpal-shell-v2';
+const CACHE = 'subpal-shell-v3';
 const DATA_CACHE = 'subpal-data';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'icons/apple-touch-icon.png'];
@@ -13,6 +13,18 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   const req = e.request;
+  // 共有されたスクショを受け取る（Android）
+  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/share-target')) {
+    e.respondWith((async () => {
+      try {
+        const fd = await req.formData();
+        const f = fd.get('image');
+        if (f) { const c = await caches.open(DATA_CACHE); await c.put('/__shared_image', new Response(f, { headers: { 'content-type': f.type || 'image/png' } })); }
+      } catch {}
+      return Response.redirect(new URL('./?shared=1', self.registration.scope).href, 303);
+    })());
+    return;
+  }
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   // まずネット、だめならキャッシュ（更新がすぐ反映され、オフラインでも動く）
   e.respondWith(fetch(req).then(res => {
@@ -58,6 +70,14 @@ async function check() {
       if (state.notified[key]) continue;
       await self.registration.showNotification(title, { body, icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag: key, data: { url: './' } });
       state.notified[key] = Date.now(); changed = true;
+    }
+  }
+  const pay = state.pay || {};
+  if (pay.remind && (pay.records || []).length) {
+    const t = today(), k = `${t.getFullYear()}-${pad(t.getMonth() + 1)}`;
+    if (!pay.records.some(r => r.type === 'balance' && r.date >= k + '-01') && !state.notified[`pay:${k}`]) {
+      await self.registration.showNotification('月が変わったよ', { body: 'PayPayの残高を記録すると、先月いくら使ったかがわかるよ。', icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag: `pay:${k}`, data: { url: './' } });
+      state.notified[`pay:${k}`] = Date.now(); changed = true;
     }
   }
   if (changed) await c.put('/__subpal_data.json', new Response(JSON.stringify(state), { headers: { 'content-type': 'application/json' } }));
