@@ -37,6 +37,17 @@
   ],
   "shortcuts": [
     {
+      "name": "使った額を入力",
+      "short_name": "使った額",
+      "url": "./?spend=1",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
       "name": "サブスクを追加",
       "url": "./?add=1",
       "icons": [

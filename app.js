@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -361,6 +361,21 @@ function renderSettings() {
 const ym = s => s.slice(0, 7);
 const ymLabel = k => `${Number(k.slice(5))}月`;
 const yenShort = v => v >= 10000 ? `${(Math.round(v / 1000) / 10).toString()}万円` : `${Math.round(v).toLocaleString('ja-JP')}円`;
+const PAY_CATS = [['food', '食費', '#F4A23B'], ['transport', '交通', '#3B82F6'], ['daily', '日用品', '#2BA36B'], ['fun', '娯楽', '#7C5CFA'], ['shop', '買い物', '#EC4899'], ['other', 'その他', '#8592A6']];
+const PCAT = Object.fromEntries(PAY_CATS.map(([k, n, c]) => [k, { name: n, color: c }]));
+const PAY_RULES = {
+  food: ['セブン', '7-eleven', 'ファミリーマート', 'ファミマ', 'ローソン', 'lawson', 'ミニストップ', 'デイリー', 'ニューデイズ', 'newdays', 'マクドナルド', 'マック', 'mcdonald', 'すき家', '松屋', '吉野家', 'なか卯', 'スターバックス', 'スタバ', 'starbucks', 'ドトール', 'タリーズ', 'コメダ', 'ガスト', 'サイゼリヤ', 'バーミヤン', 'ジョナサン', 'デニーズ', '丸亀', 'はなまる', 'スシロー', 'くら寿司', 'はま寿司', '寿司', 'ケンタッキー', 'モスバーガー', 'モス', 'バーガー', 'ラーメン', '餃子', 'カフェ', 'cafe', '食堂', '学食', '生協', 'ベーカリー', 'パン', '弁当', 'イオン', 'マルエツ', '西友', 'ライフ', 'ヤオコー', 'スーパー', 'まいばすけっと', '業務スーパー', 'オーケー', 'ロピア', 'カスミ', 'ベルク', 'とりせん', 'フード', 'ピザ', 'ウーバーイーツ', 'uber eats', '出前館', 'menu'],
+  transport: ['jr', '鉄道', '駅', 'バス', 'タクシー', 'go タクシー', 's.ride', 'eneos', '出光', 'コスモ', 'ガソリン', 'パーキング', '駐車', 'タイムズ', 'times', 'つくばエクスプレス', '東武', '関東鉄道', 'suica', 'pasmo'],
+  daily: ['マツモトキヨシ', 'マツキヨ', 'ウエルシア', 'ツルハ', 'スギ薬局', 'ココカラ', 'サンドラッグ', 'クリエイト', 'ドラッグ', '薬局', 'ダイソー', 'daiso', 'セリア', 'キャンドゥ', '無印', 'ニトリ', 'カインズ', 'ホームセンター', 'コインランドリー', 'クリーニング'],
+  fun: ['カラオケ', 'まねきねこ', 'ビッグエコー', '映画', 'シネマ', 'toho', 'ラウンドワン', 'ゲーム', 'タイトー', 'セガ', 'gigo', 'namco', 'ナムコ', 'steam', 'nintendo', 'playstation', 'ボウリング', 'ネットカフェ', '快活', '書店', '本屋', 'ブックオフ', 'tsutaya', 'アニメイト', 'メロンブックス', 'とらのあな', 'ガチャ', 'ライブ', 'チケット'],
+  shop: ['amazon', 'アマゾン', '楽天', 'yahoo', 'ヤフー', 'ヨドバシ', 'ビックカメラ', 'ケーズ', 'ヤマダ', 'ノジマ', 'ユニクロ', 'uniqlo', 'gu ', 'ジーユー', 'しまむら', 'ドン・キホーテ', 'ドンキ', 'メルカリ', 'zozo', 'apple', 'アップル'],
+};
+function guessPayCat(text) {
+  const t = String(text || '').toLowerCase().normalize('NFKC');
+  for (const k of ['transport', 'daily', 'fun', 'shop', 'food']) if (PAY_RULES[k].some(w => t.includes(w.toLowerCase().normalize('NFKC')))) return k;
+  return 'other';
+}
+const payCat = p => PCAT[p.cat] ? p.cat : 'other';
 function payMonthly() {
   const m = {};
   for (const p of state.pay.payments) m[ym(p.date)] = (m[ym(p.date)] || 0) + p.amount;
@@ -470,23 +485,60 @@ function renderPay() {
       <div class="m" style="font-weight:700;color:var(--text)">${map[k] ? yenShort(map[k]) : ''}</div>
       <div class="bar" style="height:${Math.max(0, map[k] || 0) / max * 100}%"></div><div class="m">${ymLabel(k)}</div></div>`).join('')}</div></div>`;
   }
+  html += payBreakdown() + payTrends();
   html += payCalendar();
   const sorted = [...pays].sort((a, b) => b.date.localeCompare(a.date) || b.t - a.t).slice(0, 60);
   html += `<div class="section-title">記録</div>`;
-  html += sorted.length ? `<div class="card">${sorted.map(r => `<button class="item" data-payment="${r.id}"><div class="badge" style="background:#24324A">支</div>
-      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${r.src === 'manual' ? '手入力' : '通知から自動'}</div></div>
+  html += sorted.length ? `<div class="card">${sorted.map(r => `<button class="item" data-payment="${r.id}"><div class="badge" style="background:${PCAT[payCat(r)].color};font-size:14px">${PCAT[payCat(r)].name.slice(0, 2)}</div>
+      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${PCAT[payCat(r)].name}・${r.src === 'manual' ? '手入力' : '通知から自動'}</div></div>
       <div class="right"><div class="price">${yen(r.amount)}</div></div></button>`).join('')}</div>`
     : `<div class="card"><div class="empty">まだ記録がないよ。PayPayで払うと自動で入るよ。</div></div>`;
   html += `<p class="hint" style="text-align:center">PayPayにはつながず、通知から金額だけを取り込みます。記録はこの端末の中だけに保存されます。</p>`;
   $('#view-pay').innerHTML = html;
 }
+function payBreakdown() {
+  const cur = monthKeyOffset(0), by = {};
+  for (const p of state.pay.payments) if (ym(p.date) === cur) by[payCat(p)] = (by[payCat(p)] || 0) + p.amount;
+  const total = Object.values(by).reduce((a, v) => a + v, 0);
+  if (!total) return '';
+  const rows = PAY_CATS.filter(([k]) => by[k]).sort((a, b) => by[b[0]] - by[a[0]]);
+  return `<div class="section-title">今月の使い道</div><div class="card">
+    <div class="meter split" style="height:14px;margin-top:0">${rows.map(([k, , c]) => `<div style="width:${by[k] / total * 100}%;background:${c}"></div>`).join('')}</div>
+    <div class="sum-rows">${rows.map(([k, n, c]) => `<div><i style="background:${c}"></i>${n}<span class="pct">${Math.round(by[k] / total * 100)}%</span><b>${yen(by[k])}</b></div>`).join('')}</div>
+    <p class="hint" style="margin:8px 2px 0">種類は記録をタップすると変えられます。</p></div>`;
+}
+function payTrends() {
+  const pays = state.pay.payments;
+  if (!pays.length) return '';
+  const t = today(), dow = (t.getDay() + 6) % 7;
+  const wStart = new Date(t.getFullYear(), t.getMonth(), t.getDate() - dow), pStart = new Date(wStart.getFullYear(), wStart.getMonth(), wStart.getDate() - 7);
+  const ws = toStr(wStart), ps = toStr(pStart), te = toStr(t);
+  let thisW = 0, lastW = 0;
+  const wd8 = [0, 0, 0, 0, 0, 0, 0], since = toStr(new Date(t.getFullYear(), t.getMonth(), t.getDate() - 55));
+  for (const p of pays) {
+    if (p.date >= ws && p.date <= te) thisW += p.amount;
+    else if (p.date >= ps && p.date < ws) lastW += p.amount;
+    if (p.date >= since && p.date <= te) wd8[parse(p.date).getDay()] += p.amount;
+  }
+  const order = [1, 2, 3, 4, 5, 6, 0], names = '日月火水木金土', max = Math.max(...wd8, 1);
+  const top = wd8.indexOf(Math.max(...wd8));
+  const diff = thisW - lastW;
+  return `<div class="section-title">使い方の傾向</div><div class="card">
+    <div class="week-row"><div><span>今週（月〜）</span><b>${yen(thisW)}</b></div><div><span>先週</span><b>${yen(lastW)}</b></div>
+    <div><span>先週との差</span><b class="${diff > 0 ? 'up' : 'down'}">${diff > 0 ? '+' : diff < 0 ? '−' : '±'}${yen(Math.abs(diff))}</b></div></div>
+    <div class="label-sm">曜日別（直近8週の合計）</div>
+    <div class="bars" style="height:120px">${order.map(i => `<div class="b ${i === top && wd8[i] ? 'cur' : ''}"><div class="m" style="font-weight:700;color:var(--text)">${wd8[i] ? yenShort(wd8[i]) : ''}</div>
+      <div class="bar" style="height:${wd8[i] / max * 100}%"></div><div class="m">${names[i]}</div></div>`).join('')}</div>
+    ${wd8[top] ? `<p class="hint" style="margin:8px 2px 0">${names[top]}曜日がいちばん使っているよ。</p>` : ''}</div>`;
+}
 let payDraft = null;
 function openPayForm(rec) {
-  payDraft = rec ? { ...rec } : { id: uid(), amount: '', date: toStr(today()), t: Date.now() };
+  payDraft = rec ? { ...rec } : { id: uid(), amount: '', date: toStr(today()), t: Date.now(), cat: 'other' };
   const isNew = !rec;
   openSheet(`<h2>${isNew ? '使った額を記録' : '記録を編集'}</h2>
     <div class="field"><label>金額</label><div class="price-input"><span>¥</span><input id="p-amount" type="number" inputmode="numeric" min="0" step="1" value="${esc(payDraft.amount)}" placeholder="0"></div></div>
     <div class="field"><label>日付</label><input id="p-date" type="date" value="${esc(payDraft.date)}"></div>
+    <div class="field"><label>種類</label><div class="pcats">${PAY_CATS.map(([k, n, c]) => `<button type="button" data-pcat="${k}" class="${payCat(payDraft) === k ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div></div>
     <button class="btn primary" data-act="pay-save">${isNew ? '記録する' : '保存する'}</button>
     ${isNew ? '' : '<button class="btn danger" data-act="pay-delete">削除</button>'}
     <button class="btn ghost" data-act="close">キャンセル</button>`);
@@ -497,7 +549,7 @@ function savePay() {
   if ($('#p-amount').value === '' || isNaN(amt) || amt <= 0) return toast('金額を入れてね');
   const old = state.pay.payments.find(p => p.id === payDraft.id);
   state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id);
-  state.pay.payments.push({ id: payDraft.id, key: old?.key || 'manual-' + payDraft.id, date: $('#p-date').value || toStr(today()), amount: Math.round(amt), t: payDraft.t || Date.now(), src: old ? old.src : 'manual' });
+  state.pay.payments.push({ id: payDraft.id, key: old?.key || 'manual-' + payDraft.id, date: $('#p-date').value || toStr(today()), amount: Math.round(amt), t: payDraft.t || Date.now(), src: old ? old.src : 'manual', cat: payCat(payDraft) });
   save(); vibrate(15); closeSheet(); render();
   toast(old ? '保存したよ' : `${yen(amt)}の支払いを記録したよ`);
 }
@@ -520,13 +572,15 @@ function importPayments(str) {
     const tok = raw.trim();
     if (!tok) continue;
     let m, date, amount;
-    if ((m = tok.match(/^(.*)_([\d,]+)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); }
+    let cat = 'other', key = tok;
+    if ((m = tok.match(/^(.*?)_([\d,]+)_([\s\S]*)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); cat = guessPayCat(m[3]); key = `${m[1].trim()}_${m[2]}`; }
+    else if ((m = tok.match(/^(.*)_([\d,]+)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); }
     else if ((m = tok.match(/^(\d{4})(\d{2})(\d{2})(\d{0,6})-(\d+)$/))) { date = `${m[1]}-${m[2]}-${m[3]}`; amount = Number(m[5]); }
     else if ((m = tok.match(/^([\d,]+)$/))) { date = toStr(today()); amount = Number(m[1].replace(/,/g, '')); }
     else continue;
-    if (!amount || amount > 1000000 || seen.has(tok)) continue;
-    seen.add(tok);
-    state.pay.payments.push({ id: uid(), key: tok, date, amount, t: Date.now() + n });
+    if (!amount || amount > 1000000 || seen.has(key)) continue;
+    seen.add(key);
+    state.pay.payments.push({ id: uid(), key, date, amount, cat, t: Date.now() + n });
     n++; sum += amount;
   }
   save();
@@ -813,10 +867,11 @@ document.addEventListener('click', async e => {
   if (t.dataset.day) {
     const list = state.pay.payments.filter(p => p.date === t.dataset.day).sort((a, b) => a.t - b.t);
     return openSheet(`<h2>${md(t.dataset.day)}（${wd(t.dataset.day)}）の支払い</h2>
-      <div class="card" style="box-shadow:none;background:var(--surface2)">${list.map(p => `<button class="item" data-payment="${p.id}"><div class="badge" style="background:#24324A">支</div><div class="meta"><div class="name">${yen(p.amount)}</div><div class="desc">${p.src === 'manual' ? '手入力' : '通知から自動'}</div></div><div class="right">›</div></button>`).join('')}</div>
+      <div class="card" style="box-shadow:none;background:var(--surface2)">${list.map(p => `<button class="item" data-payment="${p.id}"><div class="badge" style="background:${PCAT[payCat(p)].color};font-size:14px">${PCAT[payCat(p)].name.slice(0, 2)}</div><div class="meta"><div class="name">${yen(p.amount)}</div><div class="desc">${PCAT[payCat(p)].name}・${p.src === 'manual' ? '手入力' : '通知から自動'}</div></div><div class="right">›</div></button>`).join('')}</div>
       <div class="preview"><div class="name">合計 ${yen(list.reduce((a, p) => a + p.amount, 0))}</div></div>
       <button class="btn ghost" data-act="close">閉じる</button>`);
   }
+  if (t.dataset.pcat) { payDraft.cat = t.dataset.pcat; document.querySelectorAll('.pcats button').forEach(b => b.classList.toggle('on', b === t)); return; }
   if (t.dataset.payment) {
     const p = state.pay.payments.find(x => x.id === t.dataset.payment); if (!p) return;
     return openPayForm(p);
@@ -888,6 +943,16 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(() => { checkReminders(); if (state.settings.notify) registerPeriodic(); }).catch(() => {});
 }
 { const pp = new URLSearchParams(location.search).get('pp'); if (pp !== null) { history.replaceState(null, '', location.pathname); setTimeout(() => importPayments(pp), 100); } }
+function takeHash() {
+  if (!location.hash.startsWith('#pp=')) return;
+  let v = location.hash.slice(4);
+  try { v = decodeURIComponent(v.replace(/\+/g, ' ')); } catch {}
+  history.replaceState(null, '', location.pathname + location.search);
+  setTimeout(() => importPayments(v), 100);
+}
+takeHash();
+window.addEventListener('hashchange', takeHash);
+if (new URLSearchParams(location.search).get('spend')) { history.replaceState(null, '', location.pathname); setTimeout(() => { go('pay'); openPayForm(null); }, 300); }
 if (new URLSearchParams(location.search).get('add')) { history.replaceState(null, '', location.pathname); setTimeout(openPicker, 300); }
 // 日付が変わったら更新
 setInterval(() => { if (!document.hidden) render(); }, 60 * 1000);
