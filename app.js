@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -402,6 +402,7 @@ function renderPay() {
       <button class="pay-btn" data-act="pay-shot"><span>📷</span>スクショから記録</button>
       <button class="pay-btn" data-act="pay-balance"><span>✏️</span>残高を入力</button>
       <button class="pay-btn" data-act="pay-charge"><span>➕</span>チャージを記録</button>
+      <button class="pay-btn" data-act="pay-spend"><span>🧾</span>使った額を入力</button>
     </div>`;
   if (Object.keys(map).length) {
     const max = Math.max(...months.map(k => map[k] || 0), 1);
@@ -416,7 +417,7 @@ function renderPay() {
   html += sorted.length ? `<div class="card">${sorted.map(r => {
     const u = usedById[r.id];
     if (r.type === 'notif') return `<button class="item" data-payment="${r.id}"><div class="badge" style="background:#24324A">支</div>
-      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">支払い（通知から自動）</div></div>
+      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${r.src === 'manual' ? '支払い（手入力）' : '支払い（通知から自動）'}</div></div>
       <div class="right"><div class="price">${yen(r.amount)}</div></div></button>`;
     const sub = r.type === 'charge' ? 'チャージ' : u === undefined ? '残高（最初の記録）' : u >= 0 ? `残高・前回から ${yen(u)} 使用` : `残高・前回から ${yen(-u)} 増加（チャージの入れ忘れ？）`;
     return `<button class="item" data-pay="${r.id}"><div class="badge" style="background:${r.type === 'charge' ? '#2BA36B' : '#FF0033'}">${r.type === 'charge' ? '＋' : '¥'}</div>
@@ -432,11 +433,11 @@ function openPayForm(rec, opt = {}) {
   payDraft = rec ? { ...rec } : { id: uid(), type: opt.type || 'balance', amount: opt.amount ?? '', date: toStr(today()), t: Date.now() };
   const isNew = !rec;
   const cands = opt.cands || [];
-  openSheet(`<h2>${isNew ? (opt.img ? 'スクショから記録' : payDraft.type === 'charge' ? 'チャージを記録' : '残高を記録') : '記録を編集'}</h2>
+  openSheet(`<h2>${isNew ? (opt.img ? 'スクショから記録' : payDraft.type === 'charge' ? 'チャージを記録' : payDraft.type === 'spend' ? '使った額を記録' : '残高を記録') : '記録を編集'}</h2>
     ${opt.img ? `<img class="ocr-img" src="${opt.img}" alt="">` : ''}
     ${opt.img ? (cands.length ? `<p class="hint">読み取った数字です。残高をタップして選び、合っているか確認してね。</p><div class="cands">${cands.map((c, i) => `<button type="button" class="cand ${i === 0 ? 'on' : ''}" data-cand="${c}">${yen(c)}</button>`).join('')}</div>`
       : `<p class="hint">数字をうまく読み取れなかったよ。残高を入力してね。</p>`) : ''}
-    <div class="field"><label>種類</label><div class="seg" id="p-type"><button type="button" data-ptype="balance" class="${payDraft.type === 'balance' ? 'on' : ''}">今の残高</button><button type="button" data-ptype="charge" class="${payDraft.type === 'charge' ? 'on' : ''}">チャージした額</button></div></div>
+    <div class="field"><label>種類</label><div class="seg" id="p-type"><button type="button" data-ptype="balance" class="${payDraft.type === 'balance' ? 'on' : ''}">今の残高</button><button type="button" data-ptype="charge" class="${payDraft.type === 'charge' ? 'on' : ''}">チャージ</button><button type="button" data-ptype="spend" class="${payDraft.type === 'spend' ? 'on' : ''}">使った額</button></div></div>
     <div class="field"><label>金額</label><div class="price-input"><span>¥</span><input id="p-amount" type="number" inputmode="numeric" min="0" step="1" value="${esc(payDraft.amount)}" placeholder="0"></div></div>
     <div class="field"><label>日付</label><input id="p-date" type="date" value="${esc(payDraft.date)}"></div>
     <button class="btn primary" data-act="pay-save">${isNew ? '記録する' : '保存する'}</button>
@@ -449,9 +450,17 @@ function savePay() {
   if ($('#p-amount').value === '' || isNaN(amt) || amt < 0) return toast('金額を入れてね');
   payDraft.amount = Math.round(amt);
   payDraft.date = $('#p-date').value || toStr(today());
-  const i = state.pay.records.findIndex(r => r.id === payDraft.id);
-  if (i < 0) state.pay.records.push(payDraft); else state.pay.records[i] = payDraft;
+  state.pay.records = state.pay.records.filter(r => r.id !== payDraft.id);
+  const old = state.pay.payments.find(p => p.id === payDraft.id);
+  state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id);
+  if (payDraft.type === 'spend') {
+    state.pay.payments.push({ id: payDraft.id, key: old?.key || 'manual-' + payDraft.id, date: payDraft.date, amount: payDraft.amount, t: payDraft.t || Date.now(), src: old ? old.src : 'manual' });
+  } else {
+    const { id, type, amount, date, t } = payDraft;
+    state.pay.records.push({ id, type, amount, date, t: t || Date.now() });
+  }
   save(); vibrate(15); closeSheet(); render();
+  if (payDraft.type === 'spend') return toast(`${yen(payDraft.amount)}の支払いを記録したよ`);
   const iv = payIntervals().intervals.find(x => x.endId === payDraft.id);
   toast(payDraft.type === 'charge' ? 'チャージを記録したよ' : iv && iv.used >= 0 ? `前回から${yen(iv.used)}使ったよ` : '残高を記録したよ');
 }
@@ -802,10 +811,7 @@ document.addEventListener('click', async e => {
   if (t.id === 'fab') return openPicker();
   if (t.dataset.payment) {
     const p = state.pay.payments.find(x => x.id === t.dataset.payment); if (!p) return;
-    payDraft = p;
-    return openSheet(`<h2>支払い（通知から）</h2><div class="preview"><div class="badge" style="background:#24324A">支</div><div><div class="name">${yen(p.amount)}</div><div class="desc">${md(p.date)}（${wd(p.date)}）</div></div></div>
-      <p class="hint">間違って取り込まれた場合（キャンペーンの通知など）は削除してください。</p>
-      <button class="btn danger" data-act="payment-delete">削除</button><button class="btn ghost" data-act="close">閉じる</button>`);
+    return openPayForm({ ...p, type: 'spend' });
   }
   if (t.dataset.pay) { const r = state.pay.records.find(x => x.id === t.dataset.pay); if (r) openPayForm(r); return; }
   if (t.dataset.ptype) { payDraft.type = t.dataset.ptype; document.querySelectorAll('#p-type button').forEach(b => b.classList.toggle('on', b === t)); return; }
@@ -839,8 +845,9 @@ document.addEventListener('click', async e => {
     case 'pay-shot': return $('#shot-file').click();
     case 'pay-balance': return openPayForm(null, { type: 'balance' });
     case 'pay-charge': return openPayForm(null, { type: 'charge' });
+    case 'pay-spend': return openPayForm(null, { type: 'spend' });
     case 'pay-save': return savePay();
-    case 'pay-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.records = state.pay.records.filter(r => r.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
+    case 'pay-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.records = state.pay.records.filter(r => r.id !== payDraft.id); state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
     case 'payment-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
     case 'pay-remind': state.pay.remind = !state.pay.remind; save(); return renderPay();
     case 'toggle-notify': return toggleNotify();
