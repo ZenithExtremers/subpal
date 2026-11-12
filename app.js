@@ -460,11 +460,21 @@ function savePay() {
 function importPayments(str) {
   const seen = new Set(state.pay.payments.map(p => p.key));
   let n = 0, sum = 0;
-  for (const raw of str.split(str.includes(';') ? /[;\s]+/ : /[,\s]+/)) {
+  const parseStamp = st => {
+    let m;
+    if ((m = st.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/))) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+    if (/^\d{12,13}$/.test(st)) return toStr(new Date(Number(st)));
+    if (/^\d{9,10}$/.test(st)) return toStr(new Date(Number(st) * 1000));
+    const d = new Date(st.replace(/\//g, '-').replace(' ', 'T'));
+    if (!isNaN(d)) return toStr(d);
+    const d2 = new Date(st);
+    return isNaN(d2) ? toStr(today()) : toStr(d2);
+  };
+  for (const raw of (str.includes(';') ? str.split(';') : str.split(/[,\s]+/))) {
     const tok = raw.trim();
     if (!tok) continue;
     let m, date, amount;
-    if ((m = tok.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})(?:\.[\d.:]*)?_([\d,]+)$/))) { date = `${m[1]}-${pad(m[2])}-${pad(m[3])}`; amount = Number(m[4].replace(/,/g, '')); }
+    if ((m = tok.match(/^(.*)_([\d,]+)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); }
     else if ((m = tok.match(/^(\d{4})(\d{2})(\d{2})(\d{0,6})-(\d+)$/))) { date = `${m[1]}-${m[2]}-${m[3]}`; amount = Number(m[5]); }
     else if ((m = tok.match(/^([\d,]+)$/))) { date = toStr(today()); amount = Number(m[1].replace(/,/g, '')); }
     else continue;
