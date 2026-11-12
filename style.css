@@ -203,3 +203,4 @@ main{padding:4px 16px calc(110px + env(safe-area-inset-bottom));max-width:640px;
 .cal-d{aspect-ratio:1/1.1;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;font-size:12px;font-weight:700;background:var(--surface2);min-width:0}
 .cal-d small{font-size:9px;font-weight:800;margin-top:auto;margin-bottom:4px;max-width:100%;overflow:hidden;white-space:nowrap}
 .cal-d.today{outline:2px solid var(--primary);outline-offset:-2px}
+.report .chip{display:inline-block}

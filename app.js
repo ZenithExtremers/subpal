@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -121,6 +121,7 @@ function load() {
   return base;
 }
 function save() {
+  try { const rp = monthReport(); state.report = rp && state.settings.report !== false ? { key: rp.key, title: rp.title, body: rp.body } : null; } catch {}
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {}
   mirror();
 }
@@ -231,10 +232,11 @@ function renderHome() {
   let html = `<div class="pal">${palSVG(mood)}<div class="bubble">${msg}</div></div>`;
   if (!state.subs.length) {
     html += `<div class="card"><div class="empty">まずは1つ登録してみよう。<br>人気サービスはタップだけで追加できるよ。<button class="btn primary" data-act="add">＋ サブスクを追加</button></div></div>`;
-    if (state.pay.payments.length) html += monthSummaryCard();
+    if (state.pay.payments.length) html += reportCard() + monthSummaryCard();
   } else {
     html += `<div class="card hero"><div class="label">毎月の支払い（目安）</div><div class="big">${yen(m)}</div>
       <div class="row"><div>年間<b>${yen(m * 12)}</b></div><div>利用中<b>${active().length}件</b></div><div>今月残り<b>${yen(remainingThisMonth())}</b></div></div></div>`;
+    html += reportCard();
     html += monthSummaryCard();
     html += `<div class="section-title">これからの予定（30日）</div>`;
     html += ev.length ? `<div class="card">${ev.map(e => itemHTML(e.s, e)).join('')}</div>`
@@ -340,6 +342,7 @@ function renderSettings() {
       <button class="set-row" data-act="toggle-notify"><div>支払い・無料期間のお知らせ<small>${perm === 'unsupported' ? 'このブラウザは通知に対応していません' : perm === 'denied' ? 'ブラウザの設定で通知がブロックされています' : 'アプリを開いたときや、バックグラウンドで知らせます'}</small></div><div class="switch ${notifyOn ? 'on' : ''}"></div></button>
       <div class="set-row"><div>新規登録時の通知タイミング</div>
         <select class="select" id="default-notify">${notifyOptions(st.defaultNotify)}</select></div>
+      <button class="set-row" data-act="toggle-report"><div>月初の先月レポート<small>毎月1日以降に、先月の支出を通知でお知らせ</small></div><div class="switch ${st.report !== false ? 'on' : ''}"></div></button>
       <button class="set-row" data-act="ics"><div>カレンダーに書き出す（.ics）<small>Googleカレンダー等に取り込むと、確実にリマインドが届きます</small></div><span>›</span></button>
     </div>
     <div class="section-title">表示</div>
@@ -365,8 +368,9 @@ function payMonthly() {
 }
 function monthKeyOffset(off) { const t = today(); return ym(toStr(new Date(t.getFullYear(), t.getMonth() + off, 1))); }
 /* 今月のサブスク請求額（すでに払った分も含む） */
-function subsThisMonth() {
-  const t = today(), start = new Date(t.getFullYear(), t.getMonth(), 1), end = new Date(t.getFullYear(), t.getMonth() + 1, 1);
+function subsThisMonth() { return subsInMonth(0); }
+function subsInMonth(off) {
+  const t = today(), start = new Date(t.getFullYear(), t.getMonth() + off, 1), end = new Date(t.getFullYear(), t.getMonth() + off + 1, 1);
   let sum = 0;
   for (const s of active()) {
     if (!s.nextDate) continue;
@@ -376,6 +380,27 @@ function subsThisMonth() {
     while (parse(d) < end && g++ < 400) { if (parse(d) >= start) sum += Number(s.price) || 0; d = addCycle(d, s); }
   }
   return sum;
+}
+/* 先月レポート */
+function monthReport() {
+  const p1 = monthKeyOffset(-1), p2 = monthKeyOffset(-2), map = payMonthly();
+  const sub1 = subsInMonth(-1), sub2 = subsInMonth(-2), pay1 = map[p1] || 0, pay2 = map[p2] || 0;
+  const tot1 = sub1 + pay1, tot2 = sub2 + pay2;
+  if (!tot1) return null;
+  const diff = tot1 - tot2, hasPrev = tot2 > 0;
+  const cmp = hasPrev ? (diff > 0 ? `${ymLabel(p2)}より${yen(diff)}多い` : diff < 0 ? `${ymLabel(p2)}より${yen(-diff)}少ない` : `${ymLabel(p2)}と同じ`) : '';
+  const b = Number(state.pay.budget) || 0;
+  return { key: p1, label: ymLabel(p1), sub1, pay1, tot1, diff, hasPrev, cmp, budgetOk: b ? pay1 <= b : null, budget: b,
+    title: `${ymLabel(p1)}のふりかえり：合計${yen(tot1)}`, body: `サブスク${yen(sub1)}＋PayPay${yen(pay1)}${cmp ? `。${cmp}` : ''}` };
+}
+function reportCard() {
+  const r = monthReport();
+  if (!r || today().getDate() > 7) return '';
+  return `<div class="section-title">${r.label}のふりかえり</div><div class="card report">
+    <div class="sum-total">${yen(r.tot1)}</div>
+    ${r.hasPrev ? `<div class="chip ${r.diff > 0 ? 'soon' : ''}" style="margin:2px 0 10px">${r.cmp}</div>` : ''}
+    <div class="sum-rows"><div><i style="background:var(--primary)"></i>サブスク<b>${yen(r.sub1)}</b></div><div><i style="background:#FF0033"></i>PayPay<b>${yen(r.pay1)}</b></div>
+    ${r.budget ? `<div class="sub-note">PayPay予算 ${yen(r.budget)} → ${r.budgetOk ? '予算内でした' : `${yen(r.pay1 - r.budget)}オーバーでした`}</div>` : ''}</div></div>`;
 }
 function payThisMonth() { return payMonthly()[monthKeyOffset(0)] || 0; }
 function budgetInfo() {
@@ -687,6 +712,8 @@ function reminderList() {
     if (s.nextDate) { const n = daysUntil(s.nextDate); if (n >= 0 && n <= nd) out.push({ key: `${s.id}:bill:${s.nextDate}`, title: n === 0 ? `今日は${s.name}の支払い日` : `${s.name}の支払いまであと${n}日`, body: `${md(s.nextDate)} に ${yen(s.price)} の支払い予定です。` }); }
     if (s.trialEnd) { const n = daysUntil(s.trialEnd); if (n >= 0 && n <= Math.max(nd, 1)) out.push({ key: `${s.id}:trial:${s.trialEnd}`, title: n === 0 ? `${s.name}の無料期間は今日まで` : `${s.name}の無料期間はあと${n}日`, body: '続けないなら、終わる前に解約しよう。' }); }
   }
+  const rp = monthReport();
+  if (rp && state.settings.report !== false) out.push({ key: `report:${rp.key}`, title: rp.title, body: rp.body });
   const bi = budgetInfo();
   if (bi && bi.rate >= 0.8) {
     const k = monthKeyOffset(0), over = bi.rate >= 1;
@@ -831,6 +858,7 @@ document.addEventListener('click', async e => {
     case 'pay-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
     case 'payment-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
     case 'toggle-notify': return toggleNotify();
+    case 'toggle-report': state.settings.report = state.settings.report === false; save(); renderSettings(); return toast(state.settings.report === false ? '先月レポートをオフにしたよ' : '先月レポートをオンにしたよ');
     case 'ics': return exportICS();
     case 'export': return exportJSON();
     case 'import': return $('#import-file').click();

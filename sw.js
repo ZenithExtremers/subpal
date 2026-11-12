@@ -1,5 +1,5 @@
 /* SubPal Service Worker */
-const CACHE = 'subpal-shell-v7';
+const CACHE = 'subpal-shell-v8';
 const DATA_CACHE = 'subpal-data';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'icons/apple-touch-icon.png'];
@@ -61,6 +61,10 @@ async function check() {
     }
   }
   const pay = state.pay || {};
+  if (state.report && !state.notified[`report:${state.report.key}`]) {
+    await self.registration.showNotification(state.report.title, { body: state.report.body, icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag: `report:${state.report.key}`, data: { url: './' } });
+    state.notified[`report:${state.report.key}`] = Date.now(); changed = true;
+  }
   const b = Number(pay.budget) || 0;
   if (b) {
     const k = `${today().getFullYear()}-${pad(today().getMonth() + 1)}`;
