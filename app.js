@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -113,7 +113,7 @@ function dayChip(n, trial) {
 /* ---------- 状態と保存 ---------- */
 let state = load();
 function load() {
-  const base = { subs: [], settings: { theme: 'system', notify: false, defaultNotify: 3 }, notified: {}, pay: { records: [], payments: [], remind: true, budget: 0 } };
+  const base = { subs: [], settings: { theme: 'system', notify: false, defaultNotify: 3 }, notified: {}, pay: { payments: [], budget: 0 } };
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
     if (d && Array.isArray(d.subs)) return { ...base, ...d, settings: { ...base.settings, ...d.settings }, pay: { ...base.pay, ...d.pay, payments: d.pay?.payments || [] } };
@@ -231,7 +231,7 @@ function renderHome() {
   let html = `<div class="pal">${palSVG(mood)}<div class="bubble">${msg}</div></div>`;
   if (!state.subs.length) {
     html += `<div class="card"><div class="empty">まずは1つ登録してみよう。<br>人気サービスはタップだけで追加できるよ。<button class="btn primary" data-act="add">＋ サブスクを追加</button></div></div>`;
-    if (state.pay.payments.length || state.pay.records.length) html += monthSummaryCard();
+    if (state.pay.payments.length) html += monthSummaryCard();
   } else {
     html += `<div class="card hero"><div class="label">毎月の支払い（目安）</div><div class="big">${yen(m)}</div>
       <div class="row"><div>年間<b>${yen(m * 12)}</b></div><div>利用中<b>${active().length}件</b></div><div>今月残り<b>${yen(remainingThisMonth())}</b></div></div></div>`;
@@ -317,7 +317,7 @@ function renderStats() {
   const max = Math.max(...fc.map(b => b.sum), 1);
   html += `<div class="section-title">これから12か月の支払い予定 <span style="font-size:13px">合計 ${yen(fc.reduce((a, b) => a + b.sum, 0))}</span></div>
     <div class="card"><div class="bars">${fc.map((b, i) => `<div class="b ${i === 0 ? 'cur' : ''}" title="${b.m + 1}月 ${yen(b.sum)}">
-      <div class="m" style="font-weight:700;color:var(--text)">${b.sum >= 10000 ? (b.sum / 10000).toFixed(1) + '万' : b.sum ? Math.round(b.sum / 100) / 10 + 'k' : ''}</div>
+      <div class="m" style="font-weight:700;color:var(--text)">${b.sum ? yenShort(b.sum) : ''}</div>
       <div class="bar" style="height:${b.sum / max * 100}%"></div><div class="m">${b.m + 1}月</div></div>`).join('')}</div></div>`;
   const top = [...active()].sort((a, b) => monthly(b) - monthly(a)).slice(0, 5);
   html += `<div class="section-title">月あたりが高い順</div><div class="card">${top.map(s => `<button class="item" data-edit="${s.id}">
@@ -354,37 +354,14 @@ function renderSettings() {
     <div class="about">${palSVG('happy', 'pal-svg')}<br>SubPal v${VERSION}<br>データはこの端末の中だけに保存されます</div>`;
 }
 
-/* ---------- PayPay使用量（残高の増減から計算・取引情報は扱わない） ---------- */
+/* ---------- PayPay使用量（支払い通知から取り込んだ金額と手入力だけを扱う） ---------- */
 const ym = s => s.slice(0, 7);
 const ymLabel = k => `${Number(k.slice(5))}月`;
-function payIntervals() {
-  const recs = [...state.pay.records].sort((a, b) => a.date.localeCompare(b.date) || a.t - b.t);
-  const out = []; let prev = null, charges = 0;
-  for (const r of recs) {
-    if (r.type === 'charge') { if (prev) charges += r.amount; continue; }
-    if (prev) out.push({ from: prev.date, to: r.date, used: prev.amount + charges - r.amount, endId: r.id });
-    prev = r; charges = 0;
-  }
-  return { intervals: out, last: prev };
-}
-function notifMonthly() {
+const yenShort = v => v >= 10000 ? `${(Math.round(v / 1000) / 10).toString()}万円` : `${Math.round(v).toLocaleString('ja-JP')}円`;
+function payMonthly() {
   const m = {};
   for (const p of state.pay.payments) m[ym(p.date)] = (m[ym(p.date)] || 0) + p.amount;
   return m;
-}
-function payMonthly() {
-  const bal = balanceMonthly(), nt = notifMonthly();
-  return { ...bal, ...nt };
-}
-function balanceMonthly() {
-  const map = {};
-  for (const iv of payIntervals().intervals) {
-    const days = Math.round((parse(iv.to) - parse(iv.from)) / 86400000);
-    if (days <= 0) { map[ym(iv.to)] = (map[ym(iv.to)] || 0) + iv.used; continue; }
-    const d = parse(iv.from);
-    for (let i = 0; i < days; i++) { const k = ym(toStr(d)); map[k] = (map[k] || 0) + iv.used / days; d.setDate(d.getDate() + 1); }
-  }
-  return map;
 }
 function monthKeyOffset(off) { const t = today(); return ym(toStr(new Date(t.getFullYear(), t.getMonth() + off, 1))); }
 /* 今月のサブスク請求額（すでに払った分も含む） */
@@ -433,7 +410,7 @@ function payCalendar() {
     const key = `${y}-${pad(m)}-${pad(d)}`, v = byDay[key] || 0;
     const a = v ? 0.18 + 0.7 * (v / max) : 0;
     cells += `<button class="cal-d ${key === tStr ? 'today' : ''}" ${v ? `data-day="${key}"` : ''} style="${v ? `background:color-mix(in srgb, var(--primary) ${Math.round(a * 100)}%, transparent)` : ''}">
-      <span>${d}</span>${v ? `<small>${v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString('ja-JP')}</small>` : ''}</button>`;
+      <span>${d}</span>${v ? `<small>${yenShort(v)}</small>` : ''}</button>`;
   }
   return `<div class="section-title">使った日カレンダー</div><div class="card">
     <div class="cal-nav"><button data-cal="-1" aria-label="前の月">‹</button><b>${y}年${m}月</b><span class="cal-total">${yen(total)}</span><button data-cal="1" aria-label="次の月">›</button></div>
@@ -441,99 +418,63 @@ function payCalendar() {
     ${vals.length ? '' : '<p class="hint" style="margin:10px 2px 0">通知から取り込んだ支払いと、手で入れた「使った額」が日ごとに表示されます。</p>'}</div>`;
 }
 function renderPay() {
-  const recs = state.pay.records;
-  const auto = state.pay.payments.length > 0;
-  const nt = notifMonthly();
+  const pays = state.pay.payments;
   const map = payMonthly();
-  const { intervals, last } = payIntervals();
   const cur = monthKeyOffset(0), prev = monthKeyOffset(-1);
   const months = Array.from({ length: 6 }, (_, i) => monthKeyOffset(i - 5));
   const withData = Object.keys(map).filter(k => k < cur);
   const avg = withData.length ? withData.slice(-6).reduce((a, k) => a + map[k], 0) / Math.min(6, withData.length) : null;
   let mood = 'happy', msg;
-  if (!recs.length && auto) msg = 'PayPayの支払い通知から、使った金額を自動で集計しているよ。';
-  else if (!recs.length) msg = 'PayPayの残高を記録すると、毎月いくら使ったかを計算するよ。<br>取引の中身は見ないから安心してね。';
-  else if (!intervals.length && !auto) msg = '最初の残高を記録したよ！次に記録したときから、使った金額がわかるよ。';
+  if (!pays.length) msg = 'PayPayの支払い通知から、使った金額を自動で集計するよ。<br>手で入れることもできるよ。';
   else if (map[prev] !== undefined) {
     const v = map[prev];
     msg = `先月は<b>${yen(v)}</b>使ったよ。` + (avg && withData.length > 1 ? (v > avg * 1.2 ? 'いつもより多めだね。' : v < avg * 0.8 ? 'いつもより節約できたね！' : '') : '');
-    if (v > (avg || Infinity) * 1.2) mood = 'alert';
+    if (avg && withData.length > 1 && v > avg * 1.2) mood = 'alert';
   } else msg = `今月はここまで<b>${yen(map[cur] || 0)}</b>使ったよ。`;
-  const monthStartRec = recs.some(r => r.type === 'balance' && r.date >= cur + '-01');
-  if (recs.length && !monthStartRec && !auto) { msg = '月が変わったよ。今の残高を記録すると、先月の使用額が確定するよ。'; mood = 'alert'; }
-
   const bi = budgetInfo();
   if (bi && bi.rate >= 1) { mood = 'alert'; msg = `今月のPayPay、予算を<b>${yen(-bi.left)}</b>オーバーしてるよ。ちょっと控えめにしよう。`; }
   else if (bi && bi.rate >= 0.8) { mood = 'alert'; msg = `予算の${Math.round(bi.rate * 100)}%まで使ったよ。あと<b>${yen(bi.left)}</b>、1日<b>${yen(bi.perDay)}</b>くらいでいこう。`; }
   let html = `<div class="pal">${palSVG(mood)}<div class="bubble">${msg}</div></div>
-    <div class="card hero"><div class="label">今月のPayPay使用額${nt[cur] !== undefined ? '（通知から自動集計）' : last ? `（${md(last.date)}の記録まで）` : ''}</div><div class="big">${yen(map[cur] || 0)}</div>
-    <div class="row"><div>先月<b>${map[prev] !== undefined ? yen(map[prev]) : '—'}</b></div><div>月平均<b>${avg !== null ? yen(avg) : '—'}</b></div><div>今の残高<b>${last ? yen(last.amount) : '—'}</b></div></div></div>
-    <div class="pay-actions">
-      <button class="pay-btn" data-act="pay-shot"><span>📷</span>スクショから記録</button>
-      <button class="pay-btn" data-act="pay-balance"><span>✏️</span>残高を入力</button>
-      <button class="pay-btn" data-act="pay-charge"><span>➕</span>チャージを記録</button>
-      <button class="pay-btn" data-act="pay-spend"><span>🧾</span>使った額を入力</button>
-    </div>${budgetCard()}`;
+    <div class="card hero"><div class="label">今月のPayPay使用額</div><div class="big">${yen(map[cur] || 0)}</div>
+    <div class="row"><div>先月<b>${map[prev] !== undefined ? yen(map[prev]) : '—'}</b></div><div>月平均<b>${avg !== null ? yen(avg) : '—'}</b></div><div>今月の件数<b>${pays.filter(p => ym(p.date) === cur).length}件</b></div></div></div>
+    <button class="btn primary" data-act="pay-spend" style="margin:0">＋ 使った額を入力</button>
+    ${budgetCard()}`;
   if (Object.keys(map).length) {
     const max = Math.max(...months.map(k => map[k] || 0), 1);
     html += `<div class="section-title">月ごとの使用額</div><div class="card"><div class="bars">${months.map(k => `<div class="b ${k === cur ? 'cur' : ''}">
-      <div class="m" style="font-weight:700;color:var(--text)">${map[k] ? (map[k] >= 10000 ? (map[k] / 10000).toFixed(1) + '万' : Math.round(map[k] / 100) / 10 + 'k') : ''}</div>
-      <div class="bar" style="height:${Math.max(0, map[k] || 0) / max * 100}%"></div><div class="m">${ymLabel(k)}</div></div>`).join('')}</div>
-      <p class="hint" style="margin:10px 2px 0">支払い通知を取り込んだ月はその合計を、それ以外の月は残高の増減（記録のあいだの額を日数で振り分け）を表示しています。</p></div>`;
+      <div class="m" style="font-weight:700;color:var(--text)">${map[k] ? yenShort(map[k]) : ''}</div>
+      <div class="bar" style="height:${Math.max(0, map[k] || 0) / max * 100}%"></div><div class="m">${ymLabel(k)}</div></div>`).join('')}</div></div>`;
   }
-  const usedById = Object.fromEntries(intervals.map(iv => [iv.endId, iv.used]));
-  const sorted = [...recs, ...state.pay.payments.map(p => ({ ...p, type: 'notif' }))].sort((a, b) => b.date.localeCompare(a.date) || b.t - a.t).slice(0, 60);
-  html += `<div class="section-title">記録</div>`;
-  html += sorted.length ? `<div class="card">${sorted.map(r => {
-    const u = usedById[r.id];
-    if (r.type === 'notif') return `<button class="item" data-payment="${r.id}"><div class="badge" style="background:#24324A">支</div>
-      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${r.src === 'manual' ? '支払い（手入力）' : '支払い（通知から自動）'}</div></div>
-      <div class="right"><div class="price">${yen(r.amount)}</div></div></button>`;
-    const sub = r.type === 'charge' ? 'チャージ' : u === undefined ? '残高（最初の記録）' : u >= 0 ? `残高・前回から ${yen(u)} 使用` : `残高・前回から ${yen(-u)} 増加（チャージの入れ忘れ？）`;
-    return `<button class="item" data-pay="${r.id}"><div class="badge" style="background:${r.type === 'charge' ? '#2BA36B' : '#FF0033'}">${r.type === 'charge' ? '＋' : '¥'}</div>
-      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${sub}</div></div>
-      <div class="right"><div class="price">${r.type === 'charge' ? '+' : ''}${yen(r.amount)}</div></div></button>`;
-  }).join('')}</div>` : `<div class="card"><div class="empty">まだ記録がないよ。上のボタンから今の残高を記録しよう。</div></div>`;
   html += payCalendar();
-  html += `<div class="card"><button class="set-row" data-act="pay-remind"><div>月初めに残高の記録をお知らせ<small>設定で通知がオンのときに届きます</small></div><div class="switch ${state.pay.remind ? 'on' : ''}"></div></button></div>
-    <p class="hint" style="text-align:center">PayPayにはつながず、取引の明細も読みません。記録した数字はこの端末の中だけに保存されます。</p>`;
+  const sorted = [...pays].sort((a, b) => b.date.localeCompare(a.date) || b.t - a.t).slice(0, 60);
+  html += `<div class="section-title">記録</div>`;
+  html += sorted.length ? `<div class="card">${sorted.map(r => `<button class="item" data-payment="${r.id}"><div class="badge" style="background:#24324A">支</div>
+      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${r.src === 'manual' ? '手入力' : '通知から自動'}</div></div>
+      <div class="right"><div class="price">${yen(r.amount)}</div></div></button>`).join('')}</div>`
+    : `<div class="card"><div class="empty">まだ記録がないよ。PayPayで払うと自動で入るよ。</div></div>`;
+  html += `<p class="hint" style="text-align:center">PayPayにはつながず、通知から金額だけを取り込みます。記録はこの端末の中だけに保存されます。</p>`;
   $('#view-pay').innerHTML = html;
 }
 let payDraft = null;
-function openPayForm(rec, opt = {}) {
-  payDraft = rec ? { ...rec } : { id: uid(), type: opt.type || 'balance', amount: opt.amount ?? '', date: toStr(today()), t: Date.now() };
+function openPayForm(rec) {
+  payDraft = rec ? { ...rec } : { id: uid(), amount: '', date: toStr(today()), t: Date.now() };
   const isNew = !rec;
-  const cands = opt.cands || [];
-  openSheet(`<h2>${isNew ? (opt.img ? 'スクショから記録' : payDraft.type === 'charge' ? 'チャージを記録' : payDraft.type === 'spend' ? '使った額を記録' : '残高を記録') : '記録を編集'}</h2>
-    ${opt.img ? `<img class="ocr-img" src="${opt.img}" alt="">` : ''}
-    ${opt.img ? (cands.length ? `<p class="hint">読み取った数字です。残高をタップして選び、合っているか確認してね。</p><div class="cands">${cands.map((c, i) => `<button type="button" class="cand ${i === 0 ? 'on' : ''}" data-cand="${c}">${yen(c)}</button>`).join('')}</div>`
-      : `<p class="hint">数字をうまく読み取れなかったよ。残高を入力してね。</p>`) : ''}
-    <div class="field"><label>種類</label><div class="seg" id="p-type"><button type="button" data-ptype="balance" class="${payDraft.type === 'balance' ? 'on' : ''}">今の残高</button><button type="button" data-ptype="charge" class="${payDraft.type === 'charge' ? 'on' : ''}">チャージ</button><button type="button" data-ptype="spend" class="${payDraft.type === 'spend' ? 'on' : ''}">使った額</button></div></div>
+  openSheet(`<h2>${isNew ? '使った額を記録' : '記録を編集'}</h2>
     <div class="field"><label>金額</label><div class="price-input"><span>¥</span><input id="p-amount" type="number" inputmode="numeric" min="0" step="1" value="${esc(payDraft.amount)}" placeholder="0"></div></div>
     <div class="field"><label>日付</label><input id="p-date" type="date" value="${esc(payDraft.date)}"></div>
     <button class="btn primary" data-act="pay-save">${isNew ? '記録する' : '保存する'}</button>
     ${isNew ? '' : '<button class="btn danger" data-act="pay-delete">削除</button>'}
     <button class="btn ghost" data-act="close">キャンセル</button>`);
-  if (!opt.img && isNew) setTimeout(() => $('#p-amount')?.focus(), 350);
+  if (isNew) setTimeout(() => $('#p-amount')?.focus(), 350);
 }
 function savePay() {
   const amt = Number($('#p-amount').value);
-  if ($('#p-amount').value === '' || isNaN(amt) || amt < 0) return toast('金額を入れてね');
-  payDraft.amount = Math.round(amt);
-  payDraft.date = $('#p-date').value || toStr(today());
-  state.pay.records = state.pay.records.filter(r => r.id !== payDraft.id);
+  if ($('#p-amount').value === '' || isNaN(amt) || amt <= 0) return toast('金額を入れてね');
   const old = state.pay.payments.find(p => p.id === payDraft.id);
   state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id);
-  if (payDraft.type === 'spend') {
-    state.pay.payments.push({ id: payDraft.id, key: old?.key || 'manual-' + payDraft.id, date: payDraft.date, amount: payDraft.amount, t: payDraft.t || Date.now(), src: old ? old.src : 'manual' });
-  } else {
-    const { id, type, amount, date, t } = payDraft;
-    state.pay.records.push({ id, type, amount, date, t: t || Date.now() });
-  }
+  state.pay.payments.push({ id: payDraft.id, key: old?.key || 'manual-' + payDraft.id, date: $('#p-date').value || toStr(today()), amount: Math.round(amt), t: payDraft.t || Date.now(), src: old ? old.src : 'manual' });
   save(); vibrate(15); closeSheet(); render();
-  if (payDraft.type === 'spend') return toast(`${yen(payDraft.amount)}の支払いを記録したよ`);
-  const iv = payIntervals().intervals.find(x => x.endId === payDraft.id);
-  toast(payDraft.type === 'charge' ? 'チャージを記録したよ' : iv && iv.used >= 0 ? `前回から${yen(iv.used)}使ったよ` : '残高を記録したよ');
+  toast(old ? '保存したよ' : `${yen(amt)}の支払いを記録したよ`);
 }
 
 /* MacroDroid から送られた支払い額の取り込み（?pp=YYYYMMDDhhmmss-金額,...） */
@@ -566,48 +507,6 @@ function importPayments(str) {
   save();
   go('pay');
   toast(n ? `PayPayの支払い${n}件（${yen(sum)}）を取り込んだよ` : '新しい支払いはなかったよ');
-}
-
-/* スクショ読み取り（端末内で処理・画像は保存しない） */
-function loadScript(src) {
-  return new Promise((ok, ng) => { if (window.Tesseract) return ok(); const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ng; document.head.appendChild(s); });
-}
-async function readBalance(blob) {
-  const url = URL.createObjectURL(blob);
-  toast('読み取り中…（初回は少し時間がかかります）');
-  let cands = [];
-  try {
-    await loadScript('lib/ocr/tesseract.min.js');
-    const worker = await Tesseract.createWorker('eng', 1, { workerPath: 'lib/ocr/worker.min.js', corePath: 'lib/ocr/', langPath: 'lib/ocr/lang', gzip: true });
-    await worker.setParameters({ tessedit_char_whitelist: '0123456789,.:' });
-    const { data } = await worker.recognize(blob);
-    await worker.terminate();
-    cands = pickBalance(data.words || []);
-  } catch (e) { console.error(e); }
-  $('#toast').classList.remove('show');
-  openPayForm(null, { type: 'balance', amount: cands[0] ?? '', img: url, cands });
-}
-function pickBalance(words) {
-  const list = [];
-  for (const w of words) {
-    const t = w.text.replace(/[.,]+$/, '');
-    if (!/^\d{1,3}(,\d{3})+$|^\d+$/.test(t) || t.includes(':')) continue;
-    const v = Number(t.replace(/,/g, ''));
-    if (!isFinite(v) || v > 10000000) continue;
-    list.push({ v, h: w.bbox.y1 - w.bbox.y0, comma: t.includes(',') });
-  }
-  list.sort((a, b) => b.h - a.h || b.comma - a.comma || b.v - a.v);
-  return [...new Set(list.map(x => x.v))].slice(0, 4);
-}
-async function takeSharedImage() {
-  try {
-    const c = await caches.open(DATA_CACHE);
-    const r = await c.match('/__shared_image');
-    if (!r) return;
-    await c.delete('/__shared_image');
-    go('pay');
-    readBalance(await r.blob());
-  } catch {}
 }
 
 /* ---------- 描画まとめ ---------- */
@@ -793,11 +692,6 @@ function reminderList() {
     const k = monthKeyOffset(0), over = bi.rate >= 1;
     out.push({ key: `budget:${k}:${over ? 100 : 80}`, title: over ? 'PayPayの予算をオーバーしたよ' : 'PayPayの予算の80%を使ったよ', body: over ? `今月は予算より${yen(-bi.left)}多く使っています。` : `あと${yen(bi.left)}、1日${yen(bi.perDay)}くらいが目安です。` });
   }
-  if (state.pay.remind && state.pay.records.length && !state.pay.payments.length) {
-    const k = monthKeyOffset(0);
-    if (!state.pay.records.some(r => r.type === 'balance' && r.date >= k + '-01'))
-      out.push({ key: `pay:${k}`, title: '月が変わったよ', body: 'PayPayの残高を記録すると、先月いくら使ったかがわかるよ。' });
-  }
   return out;
 }
 async function checkReminders() {
@@ -836,7 +730,7 @@ function importJSON(file) {
       if (!Array.isArray(d.subs)) throw 0;
       state.subs = d.subs.filter(s => s && s.id && s.name).map(s => ({ status: 'active', interval: 1, cycle: 'month', cat: 'other', ...s }));
       if (d.settings) state.settings = { ...state.settings, ...d.settings };
-      if (d.pay && Array.isArray(d.pay.records)) state.pay = { ...state.pay, ...d.pay };
+      if (d.pay && Array.isArray(d.pay.payments)) state.pay = { ...state.pay, payments: d.pay.payments, budget: d.pay.budget || 0 };
       save(); applyTheme(); render(); toast('バックアップから復元したよ');
     } catch { toast('ファイルを読み込めませんでした'); }
   };
@@ -898,11 +792,8 @@ document.addEventListener('click', async e => {
   }
   if (t.dataset.payment) {
     const p = state.pay.payments.find(x => x.id === t.dataset.payment); if (!p) return;
-    return openPayForm({ ...p, type: 'spend' });
+    return openPayForm(p);
   }
-  if (t.dataset.pay) { const r = state.pay.records.find(x => x.id === t.dataset.pay); if (r) openPayForm(r); return; }
-  if (t.dataset.ptype) { payDraft.type = t.dataset.ptype; document.querySelectorAll('#p-type button').forEach(b => b.classList.toggle('on', b === t)); return; }
-  if (t.dataset.cand) { $('#p-amount').value = t.dataset.cand; document.querySelectorAll('.cand').forEach(b => b.classList.toggle('on', b === t)); return; }
   if (t.dataset.edit) { const s = state.subs.find(x => x.id === t.dataset.edit); if (s) openForm(s); return; }
   if (t.dataset.filter) { listFilter = t.dataset.filter; return renderList(); }
   if (t.dataset.themeSet) { state.settings.theme = t.dataset.themeSet; save(); applyTheme(); return renderSettings(); }
@@ -929,10 +820,7 @@ document.addEventListener('click', async e => {
     case 'close': return closeSheet();
     case 'status': return setStatus(t.dataset.to);
     case 'delete': return armed(t, 'もう一度タップで削除', () => { state.subs = state.subs.filter(s => s.id !== draft.id); save(); closeSheet(); render(); toast('削除したよ'); });
-    case 'pay-shot': return $('#shot-file').click();
-    case 'pay-balance': return openPayForm(null, { type: 'balance' });
-    case 'pay-charge': return openPayForm(null, { type: 'charge' });
-    case 'pay-spend': return openPayForm(null, { type: 'spend' });
+    case 'pay-spend': return openPayForm(null);
     case 'go-pay': return go('pay');
     case 'pay-budget': return openSheet(`<h2>PayPayの月予算</h2>
       <div class="field"><label>1か月に使っていい金額</label><div class="price-input"><span>¥</span><input id="b-amount" type="number" inputmode="numeric" min="0" step="1000" value="${state.pay.budget || ''}" placeholder="30000"></div></div>
@@ -940,14 +828,13 @@ document.addEventListener('click', async e => {
       <button class="btn primary" data-act="budget-save">保存する</button><button class="btn ghost" data-act="close">キャンセル</button>`);
     case 'budget-save': state.pay.budget = Math.max(0, Math.round(Number($('#b-amount').value) || 0)); save(); closeSheet(); render(); return toast(state.pay.budget ? `予算を${yen(state.pay.budget)}にしたよ` : '予算をなしにしたよ');
     case 'pay-save': return savePay();
-    case 'pay-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.records = state.pay.records.filter(r => r.id !== payDraft.id); state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
+    case 'pay-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
     case 'payment-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
-    case 'pay-remind': state.pay.remind = !state.pay.remind; save(); return renderPay();
     case 'toggle-notify': return toggleNotify();
     case 'ics': return exportICS();
     case 'export': return exportJSON();
     case 'import': return $('#import-file').click();
-    case 'reset': return armed(t, '<div>もう一度タップで全部消します</div>', () => { state.subs = []; state.notified = {}; state.pay.records = []; state.pay.payments = []; save(); render(); toast('すべて削除したよ'); });
+    case 'reset': return armed(t, '<div>もう一度タップで全部消します</div>', () => { state.subs = []; state.notified = {}; state.pay.payments = []; save(); render(); toast('すべて削除したよ'); });
     case 'install': if (deferredInstall) { deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; render(); } return;
   }
 });
@@ -960,7 +847,6 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   if (e.target.id === 'sort') { listSort = e.target.value; renderList(); }
   if (e.target.id === 'default-notify') { state.settings.defaultNotify = Number(e.target.value); save(); toast('保存したよ'); }
-  if (e.target.id === 'shot-file' && e.target.files[0]) { readBalance(e.target.files[0]); e.target.value = ''; }
   if (e.target.id === 'import-file' && e.target.files[0]) { importJSON(e.target.files[0]); e.target.value = ''; }
   if (e.target.closest?.('#sheet') && e.target.id?.startsWith('f-')) updatePreview();
 });
@@ -974,7 +860,6 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(() => { checkReminders(); if (state.settings.notify) registerPeriodic(); }).catch(() => {});
 }
 { const pp = new URLSearchParams(location.search).get('pp'); if (pp !== null) { history.replaceState(null, '', location.pathname); setTimeout(() => importPayments(pp), 100); } }
-if (new URLSearchParams(location.search).get('shared')) { history.replaceState(null, '', location.pathname); takeSharedImage(); }
 if (new URLSearchParams(location.search).get('add')) { history.replaceState(null, '', location.pathname); setTimeout(openPicker, 300); }
 // 日付が変わったら更新
 setInterval(() => { if (!document.hidden) render(); }, 60 * 1000);
