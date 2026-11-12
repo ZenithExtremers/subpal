@@ -174,3 +174,32 @@ main{padding:4px 16px calc(110px + env(safe-area-inset-bottom));max-width:640px;
 .cand{padding:9px 14px;border-radius:999px;background:var(--surface2);font-weight:800;font-variant-numeric:tabular-nums}
 .cand.on{background:var(--primary);color:var(--primary-ink)}
 .tab span{white-space:nowrap}
+
+/* 予算・まとめ・カレンダー */
+.budget-card,.summary{display:block;width:100%;text-align:left;margin-top:14px}
+.budget-head{display:flex;justify-content:space-between;align-items:center;font-size:15px}
+.budget-head .chip{margin:0}
+.meter{height:10px;border-radius:6px;background:var(--surface2);overflow:hidden;margin:12px 0 10px;display:flex}
+.meter-fill{height:100%;background:var(--primary);border-radius:6px;transition:width .5s}
+.meter-fill.warn{background:var(--warn)}
+.meter-fill.over{background:var(--danger)}
+.meter.split div{height:100%}
+.budget-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--sub);flex-wrap:wrap}
+.budget-row b{color:var(--text);font-size:15px}
+.over-text{color:var(--danger)}
+.summary{margin-top:0}
+.sum-total{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+.sum-rows div{display:flex;align-items:center;gap:8px;font-size:14px;padding:4px 0}
+.sum-rows i{width:10px;height:10px;border-radius:3px;flex:none}
+.sum-rows b{margin-left:auto;font-variant-numeric:tabular-nums}
+.sub-note{color:var(--sub);font-size:12.5px!important}
+.cal-nav{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.cal-nav button{width:36px;height:36px;border-radius:10px;background:var(--surface2);font-size:20px;font-weight:800}
+.cal-nav b{font-size:16px}
+.cal-total{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-h{text-align:center;font-size:11px;font-weight:700;color:var(--sub);padding-bottom:2px}
+.cal-h.sun{color:var(--danger)}.cal-h.sat{color:#3B82F6}
+.cal-d{aspect-ratio:1/1.1;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:5px;font-size:12px;font-weight:700;background:var(--surface2);min-width:0}
+.cal-d small{font-size:9px;font-weight:800;margin-top:auto;margin-bottom:4px;max-width:100%;overflow:hidden;white-space:nowrap}
+.cal-d.today{outline:2px solid var(--primary);outline-offset:-2px}

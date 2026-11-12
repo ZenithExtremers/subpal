@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -113,7 +113,7 @@ function dayChip(n, trial) {
 /* ---------- 状態と保存 ---------- */
 let state = load();
 function load() {
-  const base = { subs: [], settings: { theme: 'system', notify: false, defaultNotify: 3 }, notified: {}, pay: { records: [], payments: [], remind: true } };
+  const base = { subs: [], settings: { theme: 'system', notify: false, defaultNotify: 3 }, notified: {}, pay: { records: [], payments: [], remind: true, budget: 0 } };
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
     if (d && Array.isArray(d.subs)) return { ...base, ...d, settings: { ...base.settings, ...d.settings }, pay: { ...base.pay, ...d.pay, payments: d.pay?.payments || [] } };
@@ -231,15 +231,29 @@ function renderHome() {
   let html = `<div class="pal">${palSVG(mood)}<div class="bubble">${msg}</div></div>`;
   if (!state.subs.length) {
     html += `<div class="card"><div class="empty">まずは1つ登録してみよう。<br>人気サービスはタップだけで追加できるよ。<button class="btn primary" data-act="add">＋ サブスクを追加</button></div></div>`;
+    if (state.pay.payments.length || state.pay.records.length) html += monthSummaryCard();
   } else {
     html += `<div class="card hero"><div class="label">毎月の支払い（目安）</div><div class="big">${yen(m)}</div>
       <div class="row"><div>年間<b>${yen(m * 12)}</b></div><div>利用中<b>${active().length}件</b></div><div>今月残り<b>${yen(remainingThisMonth())}</b></div></div></div>`;
+    html += monthSummaryCard();
     html += `<div class="section-title">これからの予定（30日）</div>`;
     html += ev.length ? `<div class="card">${ev.map(e => itemHTML(e.s, e)).join('')}</div>`
       : `<div class="card"><div class="empty">30日以内の支払いはないよ。</div></div>`;
   }
   if (deferredInstall) html += installCard();
   $('#view-home').innerHTML = html;
+}
+function monthSummaryCard() {
+  const sub = subsThisMonth(), pp = payThisMonth(), bi = budgetInfo();
+  const total = sub + pp;
+  const t = today();
+  const w = total ? Math.round(sub / total * 100) : 0;
+  return `<div class="section-title">${t.getMonth() + 1}月の支出まとめ</div><button class="card summary" data-act="go-pay">
+    <div class="sum-total">${yen(total)}</div>
+    <div class="meter split"><div style="width:${w}%;background:var(--primary)"></div><div style="width:${100 - w}%;background:#FF0033"></div></div>
+    <div class="sum-rows"><div><i style="background:var(--primary)"></i>サブスク（固定費）<b>${yen(sub)}</b></div>
+    <div><i style="background:#FF0033"></i>PayPay（使った分）<b>${yen(pp)}</b></div>
+    ${bi ? `<div class="sub-note">PayPay予算 ${yen(bi.b)}・${bi.left >= 0 ? `あと${yen(bi.left)}` : `${yen(-bi.left)}オーバー`}</div>` : ''}</div></button>`;
 }
 function remainingThisMonth() { return forecast12()[0].sum; }
 function installCard() {
@@ -373,6 +387,59 @@ function balanceMonthly() {
   return map;
 }
 function monthKeyOffset(off) { const t = today(); return ym(toStr(new Date(t.getFullYear(), t.getMonth() + off, 1))); }
+/* 今月のサブスク請求額（すでに払った分も含む） */
+function subsThisMonth() {
+  const t = today(), start = new Date(t.getFullYear(), t.getMonth(), 1), end = new Date(t.getFullYear(), t.getMonth() + 1, 1);
+  let sum = 0;
+  for (const s of active()) {
+    if (!s.nextDate) continue;
+    let k = 0;
+    while (k < 400 && parse(addCycle(s.nextDate, s, -(k + 1))) >= start) k++;
+    let d = addCycle(s.nextDate, s, -k), g = 0;
+    while (parse(d) < end && g++ < 400) { if (parse(d) >= start) sum += Number(s.price) || 0; d = addCycle(d, s); }
+  }
+  return sum;
+}
+function payThisMonth() { return payMonthly()[monthKeyOffset(0)] || 0; }
+function budgetInfo() {
+  const b = Number(state.pay.budget) || 0;
+  if (!b) return null;
+  const used = payThisMonth(), t = today();
+  const daysLeft = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate() - t.getDate() + 1;
+  const left = b - used;
+  return { b, used, left, daysLeft, perDay: left > 0 ? left / daysLeft : 0, rate: used / b };
+}
+function budgetCard() {
+  const bi = budgetInfo();
+  if (!bi) return `<button class="card budget-card" data-act="pay-budget"><div class="budget-head"><b>今月の予算</b><span class="chip">未設定</span></div><div class="hint" style="margin:6px 0 0">予算を決めると「あと何円使えるか」がわかるよ。タップして設定。</div></button>`;
+  const pct = Math.min(100, Math.round(bi.rate * 100));
+  const cls = bi.rate >= 1 ? 'over' : bi.rate >= 0.8 ? 'warn' : '';
+  return `<button class="card budget-card" data-act="pay-budget"><div class="budget-head"><b>今月の予算 ${yen(bi.b)}</b><span class="chip ${bi.rate >= 1 ? 'today' : bi.rate >= 0.8 ? 'soon' : ''}">${pct}%</span></div>
+    <div class="meter"><div class="meter-fill ${cls}" style="width:${pct}%"></div></div>
+    <div class="budget-row">${bi.left >= 0 ? `<span>あと <b>${yen(bi.left)}</b></span><span>1日あたり <b>${yen(bi.perDay)}</b>（残り${bi.daysLeft}日）</span>` : `<span class="over-text">予算を <b>${yen(-bi.left)}</b> オーバー</span>`}</div></button>`;
+}
+let calMonth = null;
+function payCalendar() {
+  if (!calMonth) calMonth = monthKeyOffset(0);
+  const [y, m] = calMonth.split('-').map(Number);
+  const first = new Date(y, m - 1, 1), days = new Date(y, m, 0).getDate();
+  const byDay = {};
+  for (const p of state.pay.payments) if (ym(p.date) === calMonth) byDay[p.date] = (byDay[p.date] || 0) + p.amount;
+  const vals = Object.values(byDay), max = Math.max(...vals, 1), total = vals.reduce((a, v) => a + v, 0);
+  const tStr = toStr(today());
+  let cells = '日月火水木金土'.split('').map((d, i) => `<div class="cal-h ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</div>`).join('');
+  for (let i = 0; i < first.getDay(); i++) cells += '<div></div>';
+  for (let d = 1; d <= days; d++) {
+    const key = `${y}-${pad(m)}-${pad(d)}`, v = byDay[key] || 0;
+    const a = v ? 0.18 + 0.7 * (v / max) : 0;
+    cells += `<button class="cal-d ${key === tStr ? 'today' : ''}" ${v ? `data-day="${key}"` : ''} style="${v ? `background:color-mix(in srgb, var(--primary) ${Math.round(a * 100)}%, transparent)` : ''}">
+      <span>${d}</span>${v ? `<small>${v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toLocaleString('ja-JP')}</small>` : ''}</button>`;
+  }
+  return `<div class="section-title">使った日カレンダー</div><div class="card">
+    <div class="cal-nav"><button data-cal="-1" aria-label="前の月">‹</button><b>${y}年${m}月</b><span class="cal-total">${yen(total)}</span><button data-cal="1" aria-label="次の月">›</button></div>
+    <div class="cal">${cells}</div>
+    ${vals.length ? '' : '<p class="hint" style="margin:10px 2px 0">通知から取り込んだ支払いと、手で入れた「使った額」が日ごとに表示されます。</p>'}</div>`;
+}
 function renderPay() {
   const recs = state.pay.records;
   const auto = state.pay.payments.length > 0;
@@ -395,6 +462,9 @@ function renderPay() {
   const monthStartRec = recs.some(r => r.type === 'balance' && r.date >= cur + '-01');
   if (recs.length && !monthStartRec && !auto) { msg = '月が変わったよ。今の残高を記録すると、先月の使用額が確定するよ。'; mood = 'alert'; }
 
+  const bi = budgetInfo();
+  if (bi && bi.rate >= 1) { mood = 'alert'; msg = `今月のPayPay、予算を<b>${yen(-bi.left)}</b>オーバーしてるよ。ちょっと控えめにしよう。`; }
+  else if (bi && bi.rate >= 0.8) { mood = 'alert'; msg = `予算の${Math.round(bi.rate * 100)}%まで使ったよ。あと<b>${yen(bi.left)}</b>、1日<b>${yen(bi.perDay)}</b>くらいでいこう。`; }
   let html = `<div class="pal">${palSVG(mood)}<div class="bubble">${msg}</div></div>
     <div class="card hero"><div class="label">今月のPayPay使用額${nt[cur] !== undefined ? '（通知から自動集計）' : last ? `（${md(last.date)}の記録まで）` : ''}</div><div class="big">${yen(map[cur] || 0)}</div>
     <div class="row"><div>先月<b>${map[prev] !== undefined ? yen(map[prev]) : '—'}</b></div><div>月平均<b>${avg !== null ? yen(avg) : '—'}</b></div><div>今の残高<b>${last ? yen(last.amount) : '—'}</b></div></div></div>
@@ -403,7 +473,7 @@ function renderPay() {
       <button class="pay-btn" data-act="pay-balance"><span>✏️</span>残高を入力</button>
       <button class="pay-btn" data-act="pay-charge"><span>➕</span>チャージを記録</button>
       <button class="pay-btn" data-act="pay-spend"><span>🧾</span>使った額を入力</button>
-    </div>`;
+    </div>${budgetCard()}`;
   if (Object.keys(map).length) {
     const max = Math.max(...months.map(k => map[k] || 0), 1);
     html += `<div class="section-title">月ごとの使用額</div><div class="card"><div class="bars">${months.map(k => `<div class="b ${k === cur ? 'cur' : ''}">
@@ -424,6 +494,7 @@ function renderPay() {
       <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${sub}</div></div>
       <div class="right"><div class="price">${r.type === 'charge' ? '+' : ''}${yen(r.amount)}</div></div></button>`;
   }).join('')}</div>` : `<div class="card"><div class="empty">まだ記録がないよ。上のボタンから今の残高を記録しよう。</div></div>`;
+  html += payCalendar();
   html += `<div class="card"><button class="set-row" data-act="pay-remind"><div>月初めに残高の記録をお知らせ<small>設定で通知がオンのときに届きます</small></div><div class="switch ${state.pay.remind ? 'on' : ''}"></div></button></div>
     <p class="hint" style="text-align:center">PayPayにはつながず、取引の明細も読みません。記録した数字はこの端末の中だけに保存されます。</p>`;
   $('#view-pay').innerHTML = html;
@@ -717,6 +788,11 @@ function reminderList() {
     if (s.nextDate) { const n = daysUntil(s.nextDate); if (n >= 0 && n <= nd) out.push({ key: `${s.id}:bill:${s.nextDate}`, title: n === 0 ? `今日は${s.name}の支払い日` : `${s.name}の支払いまであと${n}日`, body: `${md(s.nextDate)} に ${yen(s.price)} の支払い予定です。` }); }
     if (s.trialEnd) { const n = daysUntil(s.trialEnd); if (n >= 0 && n <= Math.max(nd, 1)) out.push({ key: `${s.id}:trial:${s.trialEnd}`, title: n === 0 ? `${s.name}の無料期間は今日まで` : `${s.name}の無料期間はあと${n}日`, body: '続けないなら、終わる前に解約しよう。' }); }
   }
+  const bi = budgetInfo();
+  if (bi && bi.rate >= 0.8) {
+    const k = monthKeyOffset(0), over = bi.rate >= 1;
+    out.push({ key: `budget:${k}:${over ? 100 : 80}`, title: over ? 'PayPayの予算をオーバーしたよ' : 'PayPayの予算の80%を使ったよ', body: over ? `今月は予算より${yen(-bi.left)}多く使っています。` : `あと${yen(bi.left)}、1日${yen(bi.perDay)}くらいが目安です。` });
+  }
   if (state.pay.remind && state.pay.records.length && !state.pay.payments.length) {
     const k = monthKeyOffset(0);
     if (!state.pay.records.some(r => r.type === 'balance' && r.date >= k + '-01'))
@@ -809,6 +885,17 @@ document.addEventListener('click', async e => {
   if (!t) return;
   if (t.classList.contains('tab')) return go(t.dataset.view);
   if (t.id === 'fab') return openPicker();
+  if (t.dataset.cal) {
+    const [y, m] = calMonth.split('-').map(Number);
+    calMonth = ym(toStr(new Date(y, m - 1 + Number(t.dataset.cal), 1))); return renderPay();
+  }
+  if (t.dataset.day) {
+    const list = state.pay.payments.filter(p => p.date === t.dataset.day).sort((a, b) => a.t - b.t);
+    return openSheet(`<h2>${md(t.dataset.day)}（${wd(t.dataset.day)}）の支払い</h2>
+      <div class="card" style="box-shadow:none;background:var(--surface2)">${list.map(p => `<button class="item" data-payment="${p.id}"><div class="badge" style="background:#24324A">支</div><div class="meta"><div class="name">${yen(p.amount)}</div><div class="desc">${p.src === 'manual' ? '手入力' : '通知から自動'}</div></div><div class="right">›</div></button>`).join('')}</div>
+      <div class="preview"><div class="name">合計 ${yen(list.reduce((a, p) => a + p.amount, 0))}</div></div>
+      <button class="btn ghost" data-act="close">閉じる</button>`);
+  }
   if (t.dataset.payment) {
     const p = state.pay.payments.find(x => x.id === t.dataset.payment); if (!p) return;
     return openPayForm({ ...p, type: 'spend' });
@@ -846,6 +933,12 @@ document.addEventListener('click', async e => {
     case 'pay-balance': return openPayForm(null, { type: 'balance' });
     case 'pay-charge': return openPayForm(null, { type: 'charge' });
     case 'pay-spend': return openPayForm(null, { type: 'spend' });
+    case 'go-pay': return go('pay');
+    case 'pay-budget': return openSheet(`<h2>PayPayの月予算</h2>
+      <div class="field"><label>1か月に使っていい金額</label><div class="price-input"><span>¥</span><input id="b-amount" type="number" inputmode="numeric" min="0" step="1000" value="${state.pay.budget || ''}" placeholder="30000"></div></div>
+      <p class="hint">予算の80%を超えるとパルが知らせます。0にすると予算なしに戻ります。</p>
+      <button class="btn primary" data-act="budget-save">保存する</button><button class="btn ghost" data-act="close">キャンセル</button>`);
+    case 'budget-save': state.pay.budget = Math.max(0, Math.round(Number($('#b-amount').value) || 0)); save(); closeSheet(); render(); return toast(state.pay.budget ? `予算を${yen(state.pay.budget)}にしたよ` : '予算をなしにしたよ');
     case 'pay-save': return savePay();
     case 'pay-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.records = state.pay.records.filter(r => r.id !== payDraft.id); state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });
     case 'payment-delete': return armed(t, 'もう一度タップで削除', () => { state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id); save(); closeSheet(); render(); toast('削除したよ'); });

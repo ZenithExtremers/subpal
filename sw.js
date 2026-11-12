@@ -1,5 +1,5 @@
 /* SubPal Service Worker */
-const CACHE = 'subpal-shell-v5';
+const CACHE = 'subpal-shell-v6';
 const DATA_CACHE = 'subpal-data';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'icons/apple-touch-icon.png'];
@@ -78,6 +78,16 @@ async function check() {
     if (!pay.records.some(r => r.type === 'balance' && r.date >= k + '-01') && !state.notified[`pay:${k}`]) {
       await self.registration.showNotification('月が変わったよ', { body: 'PayPayの残高を記録すると、先月いくら使ったかがわかるよ。', icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag: `pay:${k}`, data: { url: './' } });
       state.notified[`pay:${k}`] = Date.now(); changed = true;
+    }
+  }
+  const b = Number(pay.budget) || 0;
+  if (b) {
+    const k = `${today().getFullYear()}-${pad(today().getMonth() + 1)}`;
+    const used = (pay.payments || []).filter(p => p.date.slice(0, 7) === k).reduce((x, p) => x + p.amount, 0);
+    const rate = used / b, lvl = rate >= 1 ? 100 : rate >= 0.8 ? 80 : 0;
+    if (lvl && !state.notified[`budget:${k}:${lvl}`]) {
+      await self.registration.showNotification(lvl === 100 ? 'PayPayの予算をオーバーしたよ' : 'PayPayの予算の80%を使ったよ', { body: `今月は${yen(used)}使っています（予算${yen(b)}）。`, icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag: `budget:${k}`, data: { url: './' } });
+      state.notified[`budget:${k}:${lvl}`] = Date.now(); changed = true;
     }
   }
   if (changed) await c.put('/__subpal_data.json', new Response(JSON.stringify(state), { headers: { 'content-type': 'application/json' } }));
