@@ -76,3 +76,4 @@ PayPayにはつながない。Android の MacroDroid が PayPay の支払い通�
 - 確認や質問は選択式で出す
 - リンクはタップで飛べる形にする
 - アプリは GitHub Pages の PWA で作る
+- 修正が終わったら、確認せずに main へ直接入れて公開してよい（作業ブランチにも push する）
