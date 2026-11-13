@@ -19,7 +19,7 @@ input,select,textarea{font:inherit;color:var(--text)}
 .topbar{position:sticky;top:0;z-index:5;padding:calc(env(safe-area-inset-top) + 14px) 20px 10px;
   background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .topbar h1{margin:0;font-size:26px;font-weight:800;letter-spacing:.01em}
-main{padding:4px 16px calc(110px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+main{padding:4px 16px calc(110px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto;overflow-x:clip}
 .view{display:none;animation:fade .25s ease}
 .view.active{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -83,8 +83,10 @@ main{padding:4px 16px calc(110px + env(safe-area-inset-bottom));max-width:640px;
 .legend i{width:10px;height:10px;border-radius:3px;flex:none}
 .legend span{flex:1}
 .legend b{font-variant-numeric:tabular-nums}
-.bars{display:flex;align-items:flex-end;gap:5px;height:150px;padding-top:18px}
-.bars .b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px}
+/* 数字が入りきらないときは、ページ全体ではなくグラフの中だけ横スクロール */
+.bars{display:flex;align-items:flex-end;gap:5px;height:150px;padding-top:18px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.bars::-webkit-scrollbar{display:none}
+.bars .b{flex:1 0 auto;min-width:22px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px}
 .bars .bar{width:100%;border-radius:6px 6px 3px 3px;background:var(--primary);min-height:3px;transition:height .5s ease}
 .bars .b.cur .bar{background:var(--warn)}
 .bars .m{font-size:10px;color:var(--sub);white-space:nowrap}

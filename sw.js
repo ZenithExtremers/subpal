@@ -1,5 +1,5 @@
 /* SubPal Service Worker */
-const CACHE = 'subpal-shell-v10';
+const CACHE = 'subpal-shell-v11';
 const DATA_CACHE = 'subpal-data';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'icons/apple-touch-icon.png'];

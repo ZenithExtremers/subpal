@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.8.1';
+const VERSION = '1.8.2';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 

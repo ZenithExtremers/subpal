@@ -1,4 +1,4 @@
-# SubPal 引き継ぎメモ（v1.8.1 / 2026-11-13）
+# SubPal 引き継ぎメモ（v1.8.2 / 2026-11-13）
 
 ## 概要
 - サブスク管理＋PayPay使用額の集計をするPWA。マスコットはペンギンの「パル」
@@ -17,7 +17,7 @@
 | manifest.webmanifest | PWA設定。ショートカット「使った額を入力」(`?spend=1`)・「サブスクを追加」(`?add=1`) |
 | icons/ | アイコン（icon.svg / maskable.svg が元。PNGは rsvg-convert で生成） |
 
-**更新時のルール**：app.js 等を変えたら `sw.js` の `CACHE`（今は `subpal-shell-v10`）の数字を上げる。上げないとスマホに反映されにくい。`app.js` の `VERSION` も上げる（今は 1.8.1）。
+**更新時のルール**：app.js 等を変えたら `sw.js` の `CACHE`（今は `subpal-shell-v11`）の数字を上げる。上げないとスマホに反映されにくい。`app.js` の `VERSION` も上げる（今は 1.8.2）。
 
 ## 状態（state）の形
 ```js
