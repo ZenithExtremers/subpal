@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.8.0';
+const VERSION = '1.8.1';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -129,17 +129,19 @@ async function mirror() { // Service Worker（バックグラウンド通知）�
   try {
     if (!('caches' in window)) return;
     const c = await caches.open(DATA_CACHE);
+    await mergeNotified(c); // SWが送った通知の記録を消さないよう、先に取り込んでから書く
     await c.put('/__subpal_data.json', new Response(JSON.stringify(state), { headers: { 'content-type': 'application/json' } }));
   } catch {}
 }
+async function mergeNotified(c) {
+  const r = await c.match('/__subpal_data.json');
+  if (!r) return;
+  const d = await r.json(), limit = Date.now() - 60 * 86400000;
+  state.notified = state.notified || {};
+  for (const [k, v] of Object.entries(d.notified || {})) if (v >= limit && !state.notified[k]) state.notified[k] = v;
+}
 async function mergeNotifiedFromSW() {
-  try {
-    const c = await caches.open(DATA_CACHE);
-    const r = await c.match('/__subpal_data.json');
-    if (!r) return;
-    const d = await r.json();
-    Object.assign(state.notified, d.notified || {});
-  } catch {}
+  try { if ('caches' in window) await mergeNotified(await caches.open(DATA_CACHE)); } catch {}
 }
 function rollForward() {
   const t = today();
@@ -183,7 +185,7 @@ function forecast12() {
     while (parse(d) < end && guard++ < 600) {
       const pd = parse(d);
       const b = buckets.find(b => b.y === pd.getFullYear() && b.m === pd.getMonth());
-      if (b) b.sum += Number(s.price) || 0;
+      if (b && !inTrial(s, d)) b.sum += Number(s.price) || 0;
       d = addCycle(d, s);
     }
   }
@@ -382,6 +384,8 @@ function payMonthly() {
   return m;
 }
 function monthKeyOffset(off) { const t = today(); return ym(toStr(new Date(t.getFullYear(), t.getMonth() + off, 1))); }
+/* 無料期間中（終了日より前）の支払日は請求なしとして扱う */
+const inTrial = (s, d) => !!s.trialEnd && d < s.trialEnd;
 /* 今月のサブスク請求額（すでに払った分も含む） */
 function subsThisMonth() { return subsInMonth(0); }
 function subsInMonth(off) {
@@ -392,7 +396,7 @@ function subsInMonth(off) {
     let k = 0;
     while (k < 400 && parse(addCycle(s.nextDate, s, -(k + 1))) >= start) k++;
     let d = addCycle(s.nextDate, s, -k), g = 0;
-    while (parse(d) < end && g++ < 400) { if (parse(d) >= start) sum += Number(s.price) || 0; d = addCycle(d, s); }
+    while (parse(d) < end && g++ < 400) { if (parse(d) >= start && !inTrial(s, d)) sum += Number(s.price) || 0; d = addCycle(d, s); }
   }
   return sum;
 }
@@ -767,7 +771,7 @@ function reminderList() {
     if (s.trialEnd) { const n = daysUntil(s.trialEnd); if (n >= 0 && n <= Math.max(nd, 1)) out.push({ key: `${s.id}:trial:${s.trialEnd}`, title: n === 0 ? `${s.name}の無料期間は今日まで` : `${s.name}の無料期間はあと${n}日`, body: '続けないなら、終わる前に解約しよう。' }); }
   }
   const rp = monthReport();
-  if (rp && state.settings.report !== false) out.push({ key: `report:${rp.key}`, title: rp.title, body: rp.body });
+  if (rp && state.settings.report !== false && today().getDate() <= 7) out.push({ key: `report:${rp.key}`, title: rp.title, body: rp.body });
   const bi = budgetInfo();
   if (bi && bi.rate >= 0.8) {
     const k = monthKeyOffset(0), over = bi.rate >= 1;

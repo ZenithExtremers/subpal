@@ -1,5 +1,5 @@
 /* SubPal Service Worker */
-const CACHE = 'subpal-shell-v9';
+const CACHE = 'subpal-shell-v10';
 const DATA_CACHE = 'subpal-data';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'icons/apple-touch-icon.png'];
@@ -8,7 +8,7 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== DATA_CACHE).map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('subpal-shell-') && k !== CACHE).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
@@ -61,7 +61,8 @@ async function check() {
     }
   }
   const pay = state.pay || {};
-  if (state.report && !state.notified[`report:${state.report.key}`]) {
+  const t0 = today(), prevKey = `${new Date(t0.getFullYear(), t0.getMonth() - 1, 1).getFullYear()}-${pad(new Date(t0.getFullYear(), t0.getMonth() - 1, 1).getMonth() + 1)}`;
+  if (state.report && state.settings.report !== false && t0.getDate() <= 7 && state.report.key === prevKey && !state.notified[`report:${state.report.key}`]) {
     await self.registration.showNotification(state.report.title, { body: state.report.body, icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag: `report:${state.report.key}`, data: { url: './' } });
     state.notified[`report:${state.report.key}`] = Date.now(); changed = true;
   }
