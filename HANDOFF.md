@@ -53,7 +53,9 @@ PayPayにはつながない。Android の MacroDroid が PayPay の支払い通�
 - アクション①：文字列処理 → 文字列の抽出：対象 `{notification}`、正規表現 `([0-9,]+)円`、グループ1 → ローカル変数 `amt`
 - アクション②：グローバル変数 `pp_log` を設定：`{v=pp_log}{not_timestamp}_{lv=amt}_{notification};`
 
-**マクロ2「SubPalに送る」**（ホーム画面ショートカット）
+**マクロ2「SubPalに送る」**
+- トリガー：ショートカットで起動（ホーム画面のボタン）／アプリを起動時：SubPal（開くだけで自動取り込み）
+- 条件：変数 `pp_log` が `;` を含む（空のときは動かない。これがないと起動のたびにループする）
 - アクション①：Webサイトを開く `https://zenithextremers.github.io/subpal/#pp={v=pp_log}`（URLエンコード：オン、HTTP GET：オフ）
 - アクション②：`pp_log` を空にする
 
