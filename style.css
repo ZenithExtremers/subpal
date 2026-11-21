@@ -207,9 +207,10 @@ main{padding:4px 16px calc(110px + env(safe-area-inset-bottom));max-width:640px;
 .cal-d.today{outline:2px solid var(--primary);outline-offset:-2px}
 .report .chip{display:inline-block}
 
-.pcats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.pcats button{padding:10px 4px;border-radius:12px;background:var(--surface2);font-weight:800;font-size:14px;border:2px solid transparent}
-.pcats button.on{border-color:var(--c);background:color-mix(in srgb,var(--c) 18%,var(--surface))}
+.shop-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.shop-chips button{padding:7px 12px;border-radius:999px;background:var(--surface2);font-weight:700;font-size:13px;border:2px solid transparent;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shop-chips button.on{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 15%,var(--surface))}
+.sum-rows .shop-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sum-rows .pct{color:var(--sub);font-size:12px;margin-left:6px}
 .week-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
 .week-row div{background:var(--surface2);border-radius:12px;padding:10px}

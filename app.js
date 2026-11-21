@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.8.2';
+const VERSION = '1.9.0';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -363,21 +363,26 @@ function renderSettings() {
 const ym = s => s.slice(0, 7);
 const ymLabel = k => `${Number(k.slice(5))}月`;
 const yenShort = v => v >= 10000 ? `${(Math.round(v / 1000) / 10).toString()}万円` : `${Math.round(v).toLocaleString('ja-JP')}円`;
-const PAY_CATS = [['food', '食費', '#F4A23B'], ['transport', '交通', '#3B82F6'], ['daily', '日用品', '#2BA36B'], ['fun', '娯楽', '#7C5CFA'], ['shop', '買い物', '#EC4899'], ['other', 'その他', '#8592A6']];
-const PCAT = Object.fromEntries(PAY_CATS.map(([k, n, c]) => [k, { name: n, color: c }]));
-const PAY_RULES = {
-  food: ['セブン', '7-eleven', 'ファミリーマート', 'ファミマ', 'ローソン', 'lawson', 'ミニストップ', 'デイリー', 'ニューデイズ', 'newdays', 'マクドナルド', 'マック', 'mcdonald', 'すき家', '松屋', '吉野家', 'なか卯', 'スターバックス', 'スタバ', 'starbucks', 'ドトール', 'タリーズ', 'コメダ', 'ガスト', 'サイゼリヤ', 'バーミヤン', 'ジョナサン', 'デニーズ', '丸亀', 'はなまる', 'スシロー', 'くら寿司', 'はま寿司', '寿司', 'ケンタッキー', 'モスバーガー', 'モス', 'バーガー', 'ラーメン', '餃子', 'カフェ', 'cafe', '食堂', '学食', '生協', 'ベーカリー', 'パン', '弁当', 'イオン', 'マルエツ', '西友', 'ライフ', 'ヤオコー', 'スーパー', 'まいばすけっと', '業務スーパー', 'オーケー', 'ロピア', 'カスミ', 'ベルク', 'とりせん', 'フード', 'ピザ', 'ウーバーイーツ', 'uber eats', '出前館', 'menu'],
-  transport: ['jr', '鉄道', '駅', 'バス', 'タクシー', 'go タクシー', 's.ride', 'eneos', '出光', 'コスモ', 'ガソリン', 'パーキング', '駐車', 'タイムズ', 'times', 'つくばエクスプレス', '東武', '関東鉄道', 'suica', 'pasmo'],
-  daily: ['マツモトキヨシ', 'マツキヨ', 'ウエルシア', 'ツルハ', 'スギ薬局', 'ココカラ', 'サンドラッグ', 'クリエイト', 'ドラッグ', '薬局', 'ダイソー', 'daiso', 'セリア', 'キャンドゥ', '無印', 'ニトリ', 'カインズ', 'ホームセンター', 'コインランドリー', 'クリーニング'],
-  fun: ['カラオケ', 'まねきねこ', 'ビッグエコー', '映画', 'シネマ', 'toho', 'ラウンドワン', 'ゲーム', 'タイトー', 'セガ', 'gigo', 'namco', 'ナムコ', 'steam', 'nintendo', 'playstation', 'ボウリング', 'ネットカフェ', '快活', '書店', '本屋', 'ブックオフ', 'tsutaya', 'アニメイト', 'メロンブックス', 'とらのあな', 'ガチャ', 'ライブ', 'チケット'],
-  shop: ['amazon', 'アマゾン', '楽天', 'yahoo', 'ヤフー', 'ヨドバシ', 'ビックカメラ', 'ケーズ', 'ヤマダ', 'ノジマ', 'ユニクロ', 'uniqlo', 'gu ', 'ジーユー', 'しまむら', 'ドン・キホーテ', 'ドンキ', 'メルカリ', 'zozo', 'apple', 'アップル'],
-};
-function guessPayCat(text) {
-  const t = String(text || '').toLowerCase().normalize('NFKC');
-  for (const k of ['transport', 'daily', 'fun', 'shop', 'food']) if (PAY_RULES[k].some(w => t.includes(w.toLowerCase().normalize('NFKC')))) return k;
-  return 'other';
+/* お店（通知の「店舗名：」から取る。端末の中だけに保存） */
+const NO_SHOP = '店名なし';
+const SHOP_COLORS = ['#F4A23B', '#3B82F6', '#2BA36B', '#7C5CFA', '#EC4899', '#0EA5B7', '#E5534B', '#B7791F'];
+const shopName = p => String(p.shop || '').trim() || NO_SHOP;
+function shopColor(name) {
+  if (name === NO_SHOP) return '#8592A6';
+  let h = 0; for (const c of name) h = (h * 31 + c.codePointAt(0)) >>> 0;
+  return SHOP_COLORS[h % SHOP_COLORS.length];
 }
-const payCat = p => PCAT[p.cat] ? p.cat : 'other';
+function parseShop(text) {
+  const m = String(text || '').normalize('NFKC').match(/店舗名\s*:\s*([^\n\r]+)/);
+  if (!m) return '';
+  return m[1].split(/\s*(?:取引番号|金額|取引日時|支払い方法)\s*:/)[0].trim().slice(0, 40);
+}
+function knownShops() { // 使った回数の多い順
+  const c = {};
+  for (const p of state.pay.payments) if (p.shop) c[p.shop] = (c[p.shop] || 0) + 1;
+  return Object.keys(c).sort((a, b) => c[b] - c[a]);
+}
+const shopBadge = p => { const n = shopName(p); return `<div class="badge" style="background:${shopColor(n)}">${esc(n === NO_SHOP ? '?' : initial(n))}</div>`; };
 function payMonthly() {
   const m = {};
   for (const p of state.pay.payments) m[ym(p.date)] = (m[ym(p.date)] || 0) + p.amount;
@@ -493,23 +498,27 @@ function renderPay() {
   html += payCalendar();
   const sorted = [...pays].sort((a, b) => b.date.localeCompare(a.date) || b.t - a.t).slice(0, 60);
   html += `<div class="section-title">記録</div>`;
-  html += sorted.length ? `<div class="card">${sorted.map(r => `<button class="item" data-payment="${r.id}"><div class="badge" style="background:${PCAT[payCat(r)].color};font-size:14px">${PCAT[payCat(r)].name.slice(0, 2)}</div>
-      <div class="meta"><div class="name">${md(r.date)}（${wd(r.date)}）</div><div class="desc">${PCAT[payCat(r)].name}・${r.src === 'manual' ? '手入力' : '通知から自動'}</div></div>
+  html += sorted.length ? `<div class="card">${sorted.map(r => `<button class="item" data-payment="${r.id}">${shopBadge(r)}
+      <div class="meta"><div class="name">${esc(shopName(r))}</div><div class="desc">${md(r.date)}（${wd(r.date)}）・${r.src === 'manual' ? '手入力' : '通知から自動'}</div></div>
       <div class="right"><div class="price">${yen(r.amount)}</div></div></button>`).join('')}</div>`
     : `<div class="card"><div class="empty">まだ記録がないよ。PayPayで払うと自動で入るよ。</div></div>`;
-  html += `<p class="hint" style="text-align:center">PayPayにはつながず、通知から金額だけを取り込みます。記録はこの端末の中だけに保存されます。</p>`;
+  html += `<p class="hint" style="text-align:center">PayPayにはつながず、通知から金額と店名だけを取り込みます。記録はこの端末の中だけに保存されます。</p>`;
   $('#view-pay').innerHTML = html;
 }
 function payBreakdown() {
-  const cur = monthKeyOffset(0), by = {};
-  for (const p of state.pay.payments) if (ym(p.date) === cur) by[payCat(p)] = (by[payCat(p)] || 0) + p.amount;
+  const cur = monthKeyOffset(0), by = {}, cnt = {};
+  for (const p of state.pay.payments) if (ym(p.date) === cur) { const n = shopName(p); by[n] = (by[n] || 0) + p.amount; cnt[n] = (cnt[n] || 0) + 1; }
   const total = Object.values(by).reduce((a, v) => a + v, 0);
   if (!total) return '';
-  const rows = PAY_CATS.filter(([k]) => by[k]).sort((a, b) => by[b[0]] - by[a[0]]);
-  return `<div class="section-title">今月の使い道</div><div class="card">
-    <div class="meter split" style="height:14px;margin-top:0">${rows.map(([k, , c]) => `<div style="width:${by[k] / total * 100}%;background:${c}"></div>`).join('')}</div>
-    <div class="sum-rows">${rows.map(([k, n, c]) => `<div><i style="background:${c}"></i>${n}<span class="pct">${Math.round(by[k] / total * 100)}%</span><b>${yen(by[k])}</b></div>`).join('')}</div>
-    <p class="hint" style="margin:8px 2px 0">種類は記録をタップすると変えられます。</p></div>`;
+  let rows = Object.keys(by).sort((a, b) => by[b] - by[a]).map(n => ({ n, v: by[n], k: cnt[n], c: shopColor(n) }));
+  if (rows.length > 6) {
+    const rest = rows.slice(5);
+    rows = rows.slice(0, 5).concat({ n: `ほか${rest.length}店`, v: rest.reduce((a, r) => a + r.v, 0), k: rest.reduce((a, r) => a + r.k, 0), c: '#8592A6' });
+  }
+  return `<div class="section-title">今月よく使ったお店</div><div class="card">
+    <div class="meter split" style="height:14px;margin-top:0">${rows.map(r => `<div style="width:${r.v / total * 100}%;background:${r.c}"></div>`).join('')}</div>
+    <div class="sum-rows">${rows.map(r => `<div><i style="background:${r.c}"></i><span class="shop-n">${esc(r.n)}</span><span class="pct">${r.k}回</span><b>${yen(r.v)}</b></div>`).join('')}</div>
+    <p class="hint" style="margin:8px 2px 0">店名は記録をタップすると変えられます。</p></div>`;
 }
 function payTrends() {
   const pays = state.pay.payments;
@@ -537,12 +546,14 @@ function payTrends() {
 }
 let payDraft = null;
 function openPayForm(rec) {
-  payDraft = rec ? { ...rec } : { id: uid(), amount: '', date: toStr(today()), t: Date.now(), cat: 'other' };
+  payDraft = rec ? { ...rec } : { id: uid(), amount: '', date: toStr(today()), t: Date.now(), shop: '' };
   const isNew = !rec;
   openSheet(`<h2>${isNew ? '使った額を記録' : '記録を編集'}</h2>
     <div class="field"><label>金額</label><div class="price-input"><span>¥</span><input id="p-amount" type="number" inputmode="numeric" min="0" step="1" value="${esc(payDraft.amount)}" placeholder="0"></div></div>
     <div class="field"><label>日付</label><input id="p-date" type="date" value="${esc(payDraft.date)}"></div>
-    <div class="field"><label>種類</label><div class="pcats">${PAY_CATS.map(([k, n, c]) => `<button type="button" data-pcat="${k}" class="${payCat(payDraft) === k ? 'on' : ''}" style="--c:${c}">${n}</button>`).join('')}</div></div>
+    <div class="field"><label>お店</label><input id="p-shop" list="shop-list" maxlength="40" autocomplete="off" value="${esc(payDraft.shop || '')}" placeholder="例：カスミ">
+      <datalist id="shop-list">${knownShops().map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      ${knownShops().length ? `<div class="shop-chips">${knownShops().slice(0, 6).map(n => `<button type="button" data-shop="${esc(n)}" class="${payDraft.shop === n ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>` : ''}</div>
     <button class="btn primary" data-act="pay-save">${isNew ? '記録する' : '保存する'}</button>
     ${isNew ? '' : '<button class="btn danger" data-act="pay-delete">削除</button>'}
     <button class="btn ghost" data-act="close">キャンセル</button>`);
@@ -553,7 +564,7 @@ function savePay() {
   if ($('#p-amount').value === '' || isNaN(amt) || amt <= 0) return toast('金額を入れてね');
   const old = state.pay.payments.find(p => p.id === payDraft.id);
   state.pay.payments = state.pay.payments.filter(p => p.id !== payDraft.id);
-  state.pay.payments.push({ id: payDraft.id, key: old?.key || 'manual-' + payDraft.id, date: $('#p-date').value || toStr(today()), amount: Math.round(amt), t: payDraft.t || Date.now(), src: old ? old.src : 'manual', cat: payCat(payDraft) });
+  state.pay.payments.push({ id: payDraft.id, key: old?.key || 'manual-' + payDraft.id, date: $('#p-date').value || toStr(today()), amount: Math.round(amt), t: payDraft.t || Date.now(), src: old ? old.src : 'manual', shop: $('#p-shop').value.trim().slice(0, 40) });
   save(); vibrate(15); closeSheet(); render();
   toast(old ? '保存したよ' : `${yen(amt)}の支払いを記録したよ`);
 }
@@ -576,15 +587,15 @@ function importPayments(str) {
     const tok = raw.trim();
     if (!tok) continue;
     let m, date, amount;
-    let cat = 'other', key = tok;
-    if ((m = tok.match(/^(.*?)_([\d,]+)_([\s\S]*)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); cat = guessPayCat(m[3]); key = `${m[1].trim()}_${m[2]}`; }
+    let shop = '', key = tok;
+    if ((m = tok.match(/^(.*?)_([\d,]+)_([\s\S]*)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); shop = parseShop(m[3]); key = `${m[1].trim()}_${m[2]}`; }
     else if ((m = tok.match(/^(.*)_([\d,]+)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); }
     else if ((m = tok.match(/^(\d{4})(\d{2})(\d{2})(\d{0,6})-(\d+)$/))) { date = `${m[1]}-${m[2]}-${m[3]}`; amount = Number(m[5]); }
     else if ((m = tok.match(/^([\d,]+)$/))) { date = toStr(today()); amount = Number(m[1].replace(/,/g, '')); }
     else continue;
     if (!amount || amount > 1000000 || seen.has(key)) continue;
     seen.add(key);
-    state.pay.payments.push({ id: uid(), key, date, amount, cat, t: Date.now() + n });
+    state.pay.payments.push({ id: uid(), key, date, amount, shop, t: Date.now() + n });
     n++; sum += amount;
   }
   save();
@@ -871,11 +882,11 @@ document.addEventListener('click', async e => {
   if (t.dataset.day) {
     const list = state.pay.payments.filter(p => p.date === t.dataset.day).sort((a, b) => a.t - b.t);
     return openSheet(`<h2>${md(t.dataset.day)}（${wd(t.dataset.day)}）の支払い</h2>
-      <div class="card" style="box-shadow:none;background:var(--surface2)">${list.map(p => `<button class="item" data-payment="${p.id}"><div class="badge" style="background:${PCAT[payCat(p)].color};font-size:14px">${PCAT[payCat(p)].name.slice(0, 2)}</div><div class="meta"><div class="name">${yen(p.amount)}</div><div class="desc">${PCAT[payCat(p)].name}・${p.src === 'manual' ? '手入力' : '通知から自動'}</div></div><div class="right">›</div></button>`).join('')}</div>
+      <div class="card" style="box-shadow:none;background:var(--surface2)">${list.map(p => `<button class="item" data-payment="${p.id}">${shopBadge(p)}<div class="meta"><div class="name">${esc(shopName(p))}　${yen(p.amount)}</div><div class="desc">${p.src === 'manual' ? '手入力' : '通知から自動'}</div></div><div class="right">›</div></button>`).join('')}</div>
       <div class="preview"><div class="name">合計 ${yen(list.reduce((a, p) => a + p.amount, 0))}</div></div>
       <button class="btn ghost" data-act="close">閉じる</button>`);
   }
-  if (t.dataset.pcat) { payDraft.cat = t.dataset.pcat; document.querySelectorAll('.pcats button').forEach(b => b.classList.toggle('on', b === t)); return; }
+  if (t.dataset.shop !== undefined && t.closest('.shop-chips')) { $('#p-shop').value = t.dataset.shop; document.querySelectorAll('.shop-chips button').forEach(b => b.classList.toggle('on', b === t)); return; }
   if (t.dataset.payment) {
     const p = state.pay.payments.find(x => x.id === t.dataset.payment); if (!p) return;
     return openPayForm(p);
