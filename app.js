@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.9.1';
+const VERSION = '1.9.2';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -576,8 +576,8 @@ function importPayments(str) {
   const parseStamp = st => {
     let m;
     if ((m = st.match(/^(\d{4})\.(\d{1,2})\.(\d{1,2})/))) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-    if (/^\d{12,13}$/.test(st)) return toStr(new Date(Number(st)));
-    if (/^\d{9,10}$/.test(st)) return toStr(new Date(Number(st) * 1000));
+    if (/^\d{12,13}(\.\d+)?$/.test(st)) return toStr(new Date(Number(st)));
+    if (/^\d{9,10}(\.\d+)?$/.test(st)) return toStr(new Date(Number(st) * 1000)); // 小数つき（Automate の秒）も可
     const d = new Date(st.replace(/\//g, '-').replace(' ', 'T'));
     if (!isNaN(d)) return toStr(d);
     const d2 = new Date(st);
