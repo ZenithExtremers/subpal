@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.9.2';
+const VERSION = '1.9.3';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -591,7 +591,7 @@ function importPayments(str) {
     if ((m = tok.match(/^(.*?)_([\d,]+)_([\s\S]*)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); shop = parseShop(m[3]); key = `${m[1].trim()}_${m[2]}`; }
     else if ((m = tok.match(/^(.*)_([\d,]+)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); }
     else if ((m = tok.match(/^([^_]+)_([\s\S]*円[\s\S]*)$/))) { // タイムスタンプ_通知テキスト（金額はこちらで取り出す。Automate 用）
-      const text = m[2].normalize('NFKC'), a = text.match(/金額\s*:\s*([\d,]+)\s*円/) || text.match(/([\d,]+)\s*円/);
+      const text = m[2].normalize('NFKC'), a = text.match(/金額\s*:\s*([\d,]+)\s*円/); // 「金額：」がない通知（キャンペーン等）は取り込まない
       if (!a) continue;
       date = parseStamp(m[1].trim()); amount = Number(a[1].replace(/,/g, '')); shop = parseShop(text); key = `${m[1].trim()}_${a[1]}`;
     }
