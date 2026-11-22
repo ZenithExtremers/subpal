@@ -1,6 +1,6 @@
 'use strict';
 /* SubPal — サブスク管理PWA */
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 const KEY = 'subpal.v1';
 const DATA_CACHE = 'subpal-data';
 
@@ -569,7 +569,7 @@ function savePay() {
   toast(old ? '保存したよ' : `${yen(amt)}の支払いを記録したよ`);
 }
 
-/* MacroDroid から送られた支払い額の取り込み（?pp=YYYYMMDDhhmmss-金額,...） */
+/* 自動化アプリから送られた支払いの取り込み（#pp=タイムスタンプ_金額_通知テキスト; または タイムスタンプ_通知テキスト;） */
 function importPayments(str) {
   const seen = new Set(state.pay.payments.map(p => p.key));
   let n = 0, sum = 0;
@@ -590,6 +590,11 @@ function importPayments(str) {
     let shop = '', key = tok;
     if ((m = tok.match(/^(.*?)_([\d,]+)_([\s\S]*)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); shop = parseShop(m[3]); key = `${m[1].trim()}_${m[2]}`; }
     else if ((m = tok.match(/^(.*)_([\d,]+)$/))) { date = parseStamp(m[1].trim()); amount = Number(m[2].replace(/,/g, '')); }
+    else if ((m = tok.match(/^([^_]+)_([\s\S]*円[\s\S]*)$/))) { // タイムスタンプ_通知テキスト（金額はこちらで取り出す。Automate 用）
+      const text = m[2].normalize('NFKC'), a = text.match(/金額\s*:\s*([\d,]+)\s*円/) || text.match(/([\d,]+)\s*円/);
+      if (!a) continue;
+      date = parseStamp(m[1].trim()); amount = Number(a[1].replace(/,/g, '')); shop = parseShop(text); key = `${m[1].trim()}_${a[1]}`;
+    }
     else if ((m = tok.match(/^(\d{4})(\d{2})(\d{2})(\d{0,6})-(\d+)$/))) { date = `${m[1]}-${m[2]}-${m[3]}`; amount = Number(m[5]); }
     else if ((m = tok.match(/^([\d,]+)$/))) { date = toStr(today()); amount = Number(m[1].replace(/,/g, '')); }
     else continue;

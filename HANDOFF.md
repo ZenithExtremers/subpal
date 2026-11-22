@@ -1,4 +1,4 @@
-# SubPal 引き継ぎメモ（v1.9.0 / 2026-11-13）
+# SubPal 引き継ぎメモ（v1.9.1 / 2026-11-13）
 
 ## 概要
 - サブスク管理＋PayPay使用額の集計をするPWA。マスコットはペンギンの「パル」
@@ -17,7 +17,7 @@
 | manifest.webmanifest | PWA設定。ショートカット「使った額を入力」(`?spend=1`)・「サブスクを追加」(`?add=1`) |
 | icons/ | アイコン（icon.svg / maskable.svg が元。PNGは rsvg-convert で生成） |
 
-**更新時のルール**：app.js 等を変えたら `sw.js` の `CACHE`（今は `subpal-shell-v12`）の数字を上げる。上げないとスマホに反映されにくい。`app.js` の `VERSION` も上げる（今は 1.9.0）。
+**更新時のルール**：app.js 等を変えたら `sw.js` の `CACHE`（今は `subpal-shell-v13`）の数字を上げる。上げないとスマホに反映されにくい。`app.js` の `VERSION` も上げる（今は 1.9.1）。
 
 ## 状態（state）の形
 ```js
@@ -44,7 +44,8 @@
 - **設定**：通知、既定の通知タイミング、先月レポート、.ics、テーマ、JSONバックアップ/復元、全削除
 - 金額の短縮表示は `yenShort()`（例：1.9万円 / 6,200円）。「k」表記は使わない
 
-## PayPay自動取り込み（MacroDroid 連携）
+## PayPay自動取り込み（MacroDroid 連携 → Automate へ乗り換え中）
+2026-11-22：MacroDroid の無料期間が切れて止まったため、無料の Automate（LlamaLab）へ乗り換え中。下の MacroDroid の設定は参考として残す。
 PayPayにはつながない。Android の MacroDroid が PayPay の支払い通知から金額を拾い、SubPal に URL で渡す。
 
 **マクロ1「PayPay金額を拾う」**
@@ -61,7 +62,7 @@ PayPayにはつながない。Android の MacroDroid が PayPay の支払い通�
 
 **SubPal側（`importPayments()` / `takeHash()`）**
 - `#pp=` を読み（`hashchange` も対応）、`;` 区切りで1件ずつ処理。旧形式の `?pp=` も読める
-- 1件の形式：`タイムスタンプ_金額_通知テキスト`（通知テキストなし・金額だけの旧形式も可）
+- 1件の形式：`タイムスタンプ_金額_通知テキスト`（MacroDroid）／`タイムスタンプ_通知テキスト`（Automate。金額は通知の「金額：〇円」からSubPalが取る）／金額だけの旧形式も可
 - タイムスタンプは `parseStamp()` で何の形式でも日付にする（エポック秒/ミリ秒、`YYYY/MM/DD hh:mm:ss`、`YYYY.M.D` 等）
 - 通知テキストから `parseShop()` で「店舗名：」の後ろだけを取り出して `shop` に保存する。通知テキストそのものは**保存しない**
 - 重複防止キーは `タイムスタンプ_金額`
