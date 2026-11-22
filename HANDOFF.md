@@ -45,7 +45,12 @@
 - 金額の短縮表示は `yenShort()`（例：1.9万円 / 6,200円）。「k」表記は使わない
 
 ## PayPay自動取り込み（MacroDroid 連携 → Automate へ乗り換え中）
-2026-11-22：MacroDroid の無料期間が切れて止まったため、無料の Automate（LlamaLab）へ乗り換え中。下の MacroDroid の設定は参考として残す。
+2026-11-22：MacroDroid の無料期間が切れて止まったため、無料の Automate（LlamaLab）へ乗り換えた。下の MacroDroid の設定は参考として残す。
+
+**Automate フロー（1つのフローを Fork で2本に分ける）**
+- 流れ1（Fork の OK）：③ Notification posted?（When transition／Package `jp.ne.paypay.android.app`／出力 Message→`msg`、When timestamp→`ts`、Dictionary of extras→`ex`。NO は自分の IN へ）→ ④ Atomic load `log` → ⑤ Variable set `log` = `log ++ ts ++ "_" ++ msg ++ "\n" ++ ex["android.bigText"] ++ ";"` → ⑥ Atomic store `log` → ③へ戻る
+- 流れ2（Fork の NEW）：⑦ App in foreground?（When changed／Package `org.chromium.webapk.a332913b0b8a1bd1b_v2`＝SubPal。NO は自分の IN へ）→ ⑧ Atomic load `log` → ⑨ Expression true? `log`（NO は⑦へ）→ ⑩ App start（Package＝SubPal／Action `android.intent.action.VIEW`／Data URI `"https://zenithextremers.github.io/subpal/#pp=" ++ urlEncode(log)`）→ ⑪ Variable set `log` = `null` → ⑫ Atomic store `log` → ⑦へ戻る
+- SubPal を開くだけで、たまった支払いが取り込まれる。実機での取り込みは未確認
 PayPayにはつながない。Android の MacroDroid が PayPay の支払い通知から金額を拾い、SubPal に URL で渡す。
 
 **マクロ1「PayPay金額を拾う」**
